@@ -8,6 +8,8 @@ from jaxtyping import Int
 from enum import Enum
 from statistics import stdev, mean
 import argparse
+from pathlib import Path
+import json
 
 
 @dataclass(frozen=True)
@@ -153,6 +155,10 @@ def _resolve_dtype(dtype_arg: str) -> torch.dtype:
 def _resolve_mode(mode_arg: str) -> StepMode:
     return StepMode.FORWARD if mode_arg == "forward" else StepMode.FORWARD_BACKWARD
 
+def append_jsonl(output_path: Path , record: dict):
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, 'a', encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
 
 def main():
     args = _parse_args()
@@ -179,6 +185,28 @@ def main():
         device=device,
         dtype=dtype,
     )
+
+    record = {
+        "mode": mode.value,
+        "num_layers": cfg.num_layers,
+        "d_model": cfg.d_model,
+        "d_ff": cfg.d_ff,
+        "num_heads": cfg.num_heads,
+        "context_len": cfg.context_len,
+        "batch_size": cfg.batch_size,
+        "vocab_size": cfg.vocab_size,
+        "warm_up": args.warm_up,
+        "nsteps": args.nsteps,
+        "device": str(device),
+        "dtype": str(dtype),
+        "mean_s": avg_time * 1000,
+        "std_s": std_time * 1000,        
+    }
+
+    root_path = Path(__file__).resolve().parents[1]
+
+    append_jsonl(root_path / "results" / "benmark.json", record)
+
 
     if device.type == "cuda":
         gpu_name = torch.cuda.get_device_name(0)
