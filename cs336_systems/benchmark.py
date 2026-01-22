@@ -112,6 +112,8 @@ def _generate_data_batch(
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="run benchmark")
+
+    p.add_argument("--model-tag", type=str, default=None, help="Model size label (e.g., small, medium, large)")
     
     # Model hyperparameters
     p.add_argument("--d-model", type=int, default=768)
@@ -133,6 +135,9 @@ def _parse_args() -> argparse.Namespace:
                   choices=["auto", "cpu", "cuda"])
     p.add_argument("--dtype", type=str, default="fp32",
                   choices=["fp32", "fp16", "bf16"])
+    
+    # Output
+    p.add_argument("--output", type=str, default="results/first_benchmark.jsonl")
 
     return p.parse_args()
 
@@ -187,6 +192,7 @@ def main():
     )
 
     record = {
+        "model_tag": args.model_tag,
         "mode": mode.value,
         "num_layers": cfg.num_layers,
         "d_model": cfg.d_model,
@@ -199,13 +205,11 @@ def main():
         "nsteps": args.nsteps,
         "device": str(device),
         "dtype": str(dtype),
-        "mean_s": avg_time * 1000,
-        "std_s": std_time * 1000,        
+        "mean_s": avg_time,
+        "std_s": std_time,        
     }
 
-    root_path = Path(__file__).resolve().parents[1]
-
-    append_jsonl(root_path / "results" / "benmark.json", record)
+    append_jsonl(Path(args.output), record)
 
 
     if device.type == "cuda":
@@ -214,7 +218,7 @@ def main():
     else:
         print(f"device={device}, dtype={dtype}, mode={mode.value}")
 
-    print(f"avg time: {avg_time * 1000:.2f} ms, std time: {std_time * 1000:.2f} ms")
+    print(f"avg time: {avg_time:.2f} s, std time: {std_time:.2f} s")
 
 if __name__ == "__main__":
     main()
