@@ -39,6 +39,9 @@ def main():
         })
 
     out_df = pd.DataFrame(rows).sort_values("model_tag")
+    order = ["small", "medium", "large", "xl", "2.7B"]
+    out_df["model_tag"] = pd.Categorical(out_df["model_tag"], categories=order, ordered=True)
+    out_df = out_df.sort_values("model_tag")
 
     # 输出 Markdown / LaTeX
     out_md.write_text(out_df.to_markdown(index=False), encoding="utf-8")
