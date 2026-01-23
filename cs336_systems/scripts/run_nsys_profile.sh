@@ -1,48 +1,78 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u
+set -o pipefail
 
-# ---------
-# Config
-# ---------
-MODEL_TAG="small"
-CONTEXT_LEN=128
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PY_SCRIPT="${ROOT}/cs336_systems/nsys_profile.py"
 
-D_MODEL=768
-D_FF=3072
-NUM_LAYERS=12
-NUM_HEADS=12
+OUT_DIR="${ROOT}/cs336_systems/results/nsys"
+LOG_JSONL="${OUT_DIR}/runs.jsonl"
+mkdir -p "${OUT_DIR}"
+: > "${LOG_JSONL}"
 
-MODE="train_step"
 WARM_UP=5
 NSTEPS=1
 DEVICE=cuda
 DTYPE=fp32
 
-OUT_DIR="results/nsys"
-OUT="${OUT_DIR}/${MODEL_TAG}_ctx${CONTEXT_LEN}_${MODE}"
+CTX_LENS=(128 256 512 1024)
+MODES=(forward train_step)
 
-mkdir -p "${OUT_DIR}"
+# tag d_model d_ff num_layers num_heads
+MODELS=(
+  "small  768   3072   12  12"
+  "medium 1024  4096   24  16"
+  "large  1280  5120   36  20"
+  "xl     1600  6400   48  25"
+  "2.7B   2560  10240  32  32"
+)
 
-echo "Profiling model=${MODEL_TAG}, ctx=${CONTEXT_LEN}"
-echo "Output: ${OUT}.nsys-rep"
+run_one () {
+  local tag="$1" ctx="$2" mode="$3" d="$4" ff="$5" L="$6" h="$7"
+  local base="${OUT_DIR}/${tag}_ctx${ctx}_${mode}"
 
-# ---------
-# Run nsys
-# ---------
-nsys profile \
-  --trace=cuda,nvtx \
-  --pytorch=autograd-nvtx \
-  --force-overwrite=true \
-  -o "${OUT}" \
-  uv run python cs336_systems/nsys_profile.py \
-    --device "${DEVICE}" \
-    --dtype "${DTYPE}" \
-    --warm-up "${WARM_UP}" \
-    --nsteps "${NSTEPS}" \
-    --model-tag "${MODEL_TAG}" \
-    --mode "${MODE}" \
-    --context-len "${CONTEXT_LEN}" \
-    --d-model "${D_MODEL}" \
-    --d-ff "${D_FF}" \
-    --num-layers "${NUM_LAYERS}" \
-    --num-heads "${NUM_HEADS}"
+  echo "Run: ${tag} ctx=${ctx} mode=${mode}"
+
+  # 跑并抓输出，用来判断 OOM
+  local out
+  out="$(
+    set +e
+    nsys profile --trace=cuda,nvtx --pytorch=autograd-nvtx --force-overwrite=true -o "${base}" \
+      uv run python "${PY_SCRIPT}" \
+        --device "${DEVICE}" --dtype "${DTYPE}" --warm-up "${WARM_UP}" --nsteps "${NSTEPS}" \
+        --model-tag "${tag}" --mode "${mode}" --context-len "${ctx}" \
+        --d-model "${d}" --d-ff "${ff}" --num-layers "${L}" --num-heads "${h}" \
+      2>&1
+    echo "<<<EXIT:$?>>>"
+  )"
+
+  local code
+  code="$(printf "%s" "${out}" | sed -n 's/.*<<<EXIT:\([0-9]\+\)>>>.*/\1/p')"
+
+  local oom=false
+  if printf "%s" "${out}" | grep -qiE "out of memory|cuda out of memory|OutOfMemoryError"; then
+    oom=true
+  fi
+
+  local rep="${base}.nsys-rep"
+  local ok=false
+  if [[ "${code}" -eq 0 && -f "${rep}" ]]; then ok=true; fi
+
+  printf '{"model_tag":"%s","context_len":%s,"mode":"%s","exit_code":%s,"oom":%s,"ok":%s,"rep":"%s"}\n' \
+    "${tag}" "${ctx}" "${mode}" "${code}" "${oom}" "${ok}" "${rep}" >> "${LOG_JSONL}"
+
+  if [[ "${ok}" != "true" ]]; then
+    echo "  -> recorded failure (oom=${oom}, exit=${code})"
+  fi
+}
+
+for line in "${MODELS[@]}"; do
+  read -r tag d ff L h <<< "${line}"
+  for ctx in "${CTX_LENS[@]}"; do
+    for mode in "${MODES[@]}"; do
+      run_one "${tag}" "${ctx}" "${mode}" "${d}" "${ff}" "${L}" "${h}"
+    done
+  done
+done
+
+echo "Done. Logs: ${LOG_JSONL}"
