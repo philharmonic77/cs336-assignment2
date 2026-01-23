@@ -1,0 +1,195 @@
+from dataclasses import dataclass
+from cs336_basics.nn.transformer import TransformerLM
+from cs336_basics.losses import cross_entropy
+from cs336_basics.optim import AdamW
+import torch
+from torch import Tensor
+from jaxtyping import Int
+import argparse
+import torch.cuda.nvtx as nvtx
+from enum import Enum
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    d_model: int = 768
+    d_ff: int = 3072
+    num_layers: int = 12
+    num_heads: int = 12
+    context_len: int = 128
+    vocab_size: int = 10000
+    batch_size: int = 4
+    optimizer: str = "sgd"
+    lr: float = 3e-4
+
+class StepMode(Enum):
+    FORWARD = "forward"
+    TRAIN_STEP = "train_step"
+
+def run_profiling(
+        cfg: ModelConfig,
+        warm_up: int,
+        nsteps: int,
+        mode: str,
+        *,
+        device: torch.device,
+        dtype: torch.dtype
+):
+    
+    model = _build_model(cfg)
+    model.to(device=device, dtype=dtype)
+    model.train()
+
+    optimizer = _build_optimizer(cfg)(model.parameters(), lr=cfg.lr)
+    
+    with nvtx.range("warmup"):
+        for _ in range(warm_up):
+            x, y = _generate_data_batch(cfg, device=device)
+
+            if mode == StepMode.TRAIN_STEP.value:
+                optimizer.zero_grad(set_to_none=True)
+
+            logits = model(x)
+
+            if mode == StepMode.TRAIN_STEP.value:
+                loss = cross_entropy(logits, y)
+                loss.backward()
+                optimizer.step()
+
+    with nvtx.range("measure"):
+        for _ in range(nsteps):
+            x, y = _generate_data_batch(cfg, device=device)
+
+            if mode == StepMode.TRAIN_STEP.value:
+                optimizer.zero_grad(set_to_none=True)
+
+            with nvtx.range("forward"):
+                logits = model(x)
+
+            if mode == StepMode.TRAIN_STEP.value:
+                with nvtx.range("loss"):
+                    loss = cross_entropy(logits, y)
+
+                with nvtx.range("backward"):
+                    loss.backward()
+
+                with nvtx.range("optimizer_step"):
+                    optimizer.step()
+
+
+def _build_model(
+        cfg: ModelConfig,
+) -> TransformerLM:
+
+    model = TransformerLM(
+        vocab_size=cfg.vocab_size,
+        context_length=cfg.context_len,
+        num_layers=cfg.num_layers,
+        d_model=cfg.d_model,
+        num_heads=cfg.num_heads,
+        d_ff=cfg.d_ff,
+        rope_theta=10000
+    )
+    return model
+
+def _build_optimizer(cfg: ModelConfig):
+    if cfg.optimizer.lower() == "sgd":
+        return torch.optim.SGD
+    if cfg.optimizer.lower() == 'adamw':
+        return AdamW
+    raise ValueError(f"the name of optimizer must be sgd or adamW, but here it's {cfg.optimizer!r}")
+
+def _generate_data_batch(
+        cfg:ModelConfig,
+        device: torch.device) -> tuple[Int[Tensor, "B S"], Int[Tensor, "B S"]]:
+    
+    input_ids = torch.randint(
+        low=0,
+        high=cfg.vocab_size,
+        size=(cfg.batch_size, cfg.context_len + 1),
+        device=device,
+        dtype=torch.long
+    )
+
+    target_ids = input_ids[:, 1:]
+    input_ids = input_ids[:, :-1]
+    return input_ids, target_ids
+
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="run benchmark")
+
+    p.add_argument("--model-tag", type=str, default=None, help="Model size label (e.g., small, medium, large)")
+    p.add_argument("--mode", type=str, default="forward",
+                choices=["forward", "train_step"])
+    
+    # Model hyperparameters
+    p.add_argument("--d-model", type=int, default=768)
+    p.add_argument("--d-ff", type=int, default=3072)
+    p.add_argument("--num-layers", type=int, default=12)
+    p.add_argument("--num-heads", type=int, default=12)
+    p.add_argument("--context-len", type=int, default=128)
+    p.add_argument("--vocab-size", type=int, default=10000)
+    p.add_argument("--batch-size", type=int, default=4)
+
+    # OPtimizer hyperparameters
+    p.add_argument("--optimizer", type=str, default="sgd")
+    p.add_argument("--lr", type=float, default=3e-4)    
+
+    # Benchmark hyperparameters
+    p.add_argument("--warm-up", type=int, default=5)
+    p.add_argument("--nsteps", type=int, default=1)
+
+    # Runtime
+    p.add_argument("--device", type=str, default="auto",
+                  choices=["auto", "cpu", "cuda"])
+    p.add_argument("--dtype", type=str, default="fp32",
+                  choices=["fp32", "fp16", "bf16"])
+    
+    return p.parse_args()
+
+def _resolve_device(device_arg: str) -> torch.device:
+    if device_arg == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device(device_arg)
+
+
+def _resolve_dtype(dtype_arg: str) -> torch.dtype:
+    if dtype_arg == "fp32":
+        return torch.float32
+    if dtype_arg == "fp16":
+        return torch.float16
+    if dtype_arg == "bf16":
+        return torch.bfloat16
+    raise ValueError(f"Unknown dtype: {dtype_arg}")
+
+
+def main():
+    args = _parse_args()
+
+    cfg = ModelConfig(
+        d_model=args.d_model,
+        d_ff=args.d_ff,
+        num_layers=args.num_layers,
+        num_heads=args.num_heads,
+        context_len=args.context_len,
+        vocab_size=args.vocab_size,
+        batch_size=args.batch_size,
+        optimizer=args.optimizer,
+        lr=args.lr
+    )
+
+    device = _resolve_device(args.device)
+    dtype = _resolve_dtype(args.dtype)
+
+    run_profiling(
+        cfg=cfg,
+        warm_up=args.warm_up,
+        nsteps=args.nsteps,
+        mode=args.mode,
+        device=device,
+        dtype=dtype,
+    )
+
+    
+if __name__ == "__main__":
+    main()
