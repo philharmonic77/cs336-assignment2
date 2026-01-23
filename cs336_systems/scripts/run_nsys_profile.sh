@@ -31,7 +31,7 @@ echo "Output: ${OUT}.nsys-rep"
 # ---------
 nsys profile \
   --trace=cuda,nvtx \
-  --pytorch \
+  --pytorch=autograd-nvtx \
   --force-overwrite=true \
   -o "${OUT}" \
   uv run python cs336_systems/nsys_profile.py \
