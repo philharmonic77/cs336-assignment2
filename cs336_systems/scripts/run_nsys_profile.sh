@@ -17,6 +17,7 @@ DTYPE=fp32
 
 CTX_LENS=(128 256 512 1024)
 MODES=(forward train_step)
+OPTIMS=(sgd adamw)
 
 # tag d_model d_ff num_layers num_heads
 MODELS=(
@@ -28,10 +29,10 @@ MODELS=(
 )
 
 run_one () {
-  local tag="$1" ctx="$2" mode="$3" d="$4" ff="$5" L="$6" h="$7"
-  local base="${OUT_DIR}/${tag}_ctx${ctx}_${mode}"
+  local tag="$1" ctx="$2" mode="$3" d="$4" ff="$5" L="$6" h="$7" optim="$8"
+  local base="${OUT_DIR}/${tag}_ctx${ctx}_${mode}_${optim}"
 
-  echo "Run: ${tag} ctx=${ctx} mode=${mode}"
+  echo "Run: ${tag} ctx=${ctx} mode=${mode} optim=${optim}"
 
   # 跑并抓输出，用来判断 OOM
   local out
@@ -41,7 +42,7 @@ run_one () {
       uv run python "${PY_SCRIPT}" \
         --device "${DEVICE}" --dtype "${DTYPE}" --warm-up "${WARM_UP}" --nsteps "${NSTEPS}" \
         --model-tag "${tag}" --mode "${mode}" --context-len "${ctx}" \
-        --d-model "${d}" --d-ff "${ff}" --num-layers "${L}" --num-heads "${h}" \
+        --d-model "${d}" --d-ff "${ff}" --num-layers "${L}" --num-heads "${h}"  --optimizer "${optim}" \
       2>&1
     echo "<<<EXIT:$?>>>"
   )"
@@ -58,8 +59,8 @@ run_one () {
   local ok=false
   if [[ "${code}" -eq 0 && -f "${rep}" ]]; then ok=true; fi
 
-  printf '{"model_tag":"%s","context_len":%s,"mode":"%s","exit_code":%s,"oom":%s,"ok":%s,"rep":"%s"}\n' \
-    "${tag}" "${ctx}" "${mode}" "${code}" "${oom}" "${ok}" "${rep}" >> "${LOG_JSONL}"
+  printf '{"model_tag":"%s","context_len":%s,"mode":"%s","optim":"%s","exit_code":%s,"oom":%s,"ok":%s,"rep":"%s"}\n' \
+    "${tag}" "${ctx}" "${mode}" "${optim}" "${code}" "${oom}" "${ok}" "${rep}" >> "${LOG_JSONL}"
 
   if [[ "${ok}" != "true" ]]; then
     echo "  -> recorded failure (oom=${oom}, exit=${code})"
@@ -70,7 +71,9 @@ for line in "${MODELS[@]}"; do
   read -r tag d ff L h <<< "${line}"
   for ctx in "${CTX_LENS[@]}"; do
     for mode in "${MODES[@]}"; do
-      run_one "${tag}" "${ctx}" "${mode}" "${d}" "${ff}" "${L}" "${h}"
+      for optim in "${OPTIMS[@]}"; do
+        run_one "${tag}" "${ctx}" "${mode}" "${d}" "${ff}" "${L}" "${h}" "${optim}"
+      done
     done
   done
 done

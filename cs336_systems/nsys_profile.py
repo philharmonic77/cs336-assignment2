@@ -38,7 +38,10 @@ def run_profiling(
     
     model = _build_model(cfg)
     model.to(device=device, dtype=dtype)
-    model.train()
+    if mode == StepMode.FORWARD.value:
+        model.eval()
+    else:
+        model.train()
 
     optimizer = _build_optimizer(cfg)(model.parameters(), lr=cfg.lr)
     
@@ -46,12 +49,12 @@ def run_profiling(
         for _ in range(warm_up):
             x, y = _generate_data_batch(cfg, device=device)
 
-            if mode == StepMode.TRAIN_STEP.value:
+            if mode == StepMode.FORWARD.value:
+                with torch.no_grad():
+                    logits = model(x)
+            else:
                 optimizer.zero_grad(set_to_none=True)
-
-            logits = model(x)
-
-            if mode == StepMode.TRAIN_STEP.value:
+                logits = model(x)
                 loss = cross_entropy(logits, y)
                 loss.backward()
                 optimizer.step()
@@ -60,21 +63,21 @@ def run_profiling(
         for _ in range(nsteps):
             x, y = _generate_data_batch(cfg, device=device)
 
-            if mode == StepMode.TRAIN_STEP.value:
+            if mode == StepMode.FORWARD.value:
+                with nvtx.range("forward"):
+                    with torch.no_grad():
+                        logits = model(x)
+            else:
                 optimizer.zero_grad(set_to_none=True)
-
-            with nvtx.range("forward"):
-                logits = model(x)
-
-            if mode == StepMode.TRAIN_STEP.value:
+                with nvtx.range("forward"):
+                    logits = model(x)
                 with nvtx.range("loss"):
                     loss = cross_entropy(logits, y)
-
                 with nvtx.range("backward"):
                     loss.backward()
-
                 with nvtx.range("optimizer_step"):
                     optimizer.step()
+
 
 
 def _build_model(
