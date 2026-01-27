@@ -7,19 +7,21 @@ PY_SCRIPT="${ROOT}/cs336_systems/nsys_profile.py"
 
 OUT_DIR="${ROOT}/results/nsys"
 LOG_DIR="${OUT_DIR}/logs"
-LOG_JSONL="${OUT_DIR}/runs.jsonl"
+RUNS_JSONL="${OUT_DIR}/runs.jsonl"
+TIMES_JSONL="${OUT_DIR}/times.jsonl"
+
 mkdir -p "${OUT_DIR}" "${LOG_DIR}"
-: > "${LOG_JSONL}"
+: > "${RUNS_JSONL}"
+: > "${TIMES_JSONL}"
 
 WARM_UP=5
-NSTEPS=10          # <<< 你要的
+NSTEPS=10
 DEVICE=cuda
 DTYPE=fp32
 
 CTX_LENS=(128 256 512 1024)
 MODES=(forward_only train_step)
 
-# tag d_model d_ff num_layers num_heads
 MODELS=(
   "small  768   3072   12  12"
   "medium 1024  4096   24  16"
@@ -27,8 +29,6 @@ MODELS=(
   "xl     1600  6400   48  25"
   "2.7B   2560  10240  32  32"
 )
-
-json_bool () { [[ "$1" == "true" ]] && echo true || echo false; }
 
 run_one () {
   local tag="$1" ctx="$2" mode="$3" d="$4" ff="$5" L="$6" h="$7"
@@ -38,8 +38,7 @@ run_one () {
 
   echo "Run: ${tag} ctx=${ctx} mode=${mode}"
 
-  # 运行并捕获输出与 exit code
-  local out code
+  local out code oom ok
   out="$(
     set +e
     nsys profile \
@@ -59,29 +58,30 @@ run_one () {
         --d-ff "${ff}" \
         --num-layers "${L}" \
         --num-heads "${h}" \
+        --output "${TIMES_JSONL}" \
       2>&1
     echo "<<<EXIT:$?>>>"
   )"
+
   printf "%s\n" "${out}" > "${log}"
 
   code="$(printf "%s" "${out}" | sed -n 's/.*<<<EXIT:\([0-9]\+\)>>>.*/\1/p')"
   [[ -z "${code}" ]] && code=999
 
-  local oom=false
+  oom=false
   if printf "%s" "${out}" | grep -qiE "out of memory|cuda out of memory|OutOfMemoryError"; then
     oom=true
   fi
 
-  local ok=false
+  ok=false
   if [[ "${code}" -eq 0 && -f "${rep}" ]]; then
     ok=true
   fi
 
-  # 写 JSONL（一行一个对象）
   printf '{"model_tag":"%s","context_len":%s,"mode":"%s","exit_code":%s,"oom":%s,"ok":%s,"rep":"%s","log":"%s"}\n' \
     "${tag}" "${ctx}" "${mode}" "${code}" \
-    "$(json_bool "${oom}")" "$(json_bool "${ok}")" \
-    "${rep}" "${log}" >> "${LOG_JSONL}"
+    "${oom}" "${ok}" \
+    "${rep}" "${log}" >> "${RUNS_JSONL}"
 
   if [[ "${ok}" == "true" ]]; then
     echo "  -> OK: ${rep}"
@@ -100,4 +100,6 @@ for line in "${MODELS[@]}"; do
   done
 done
 
-echo "Done. JSONL: ${LOG_JSONL}"
+echo "Done."
+echo "  Runs log:  ${RUNS_JSONL}"
+echo "  Times log: ${TIMES_JSONL}"
