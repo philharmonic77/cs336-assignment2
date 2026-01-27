@@ -17,7 +17,7 @@ mkdir -p "${OUT_DIR}"
 # Global params
 # ----------------------------
 WARM_UP=5
-NSTEPS=1
+NSTEPS=10
 DEVICE=cuda
 DTYPE=fp32
 
