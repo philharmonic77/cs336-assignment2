@@ -30,51 +30,69 @@ def run_benchmark(
         cfg: ModelConfig,
         warm_up: int,
         nsteps: int,
-        mode:  StepMode,
+        mode: StepMode,
         *,
         device: torch.device,
         dtype: torch.dtype
 ) -> tuple[float, float]:
-    
-    model = _build_model(cfg)
-    model.to(device=device, dtype=dtype)
 
+    model = _build_model(cfg).to(device=device, dtype=dtype)
+
+    if mode == StepMode.FORWARD:
+        model.eval()
+    else:
+        model.train()
+
+    # -------------------
+    # Warmup
+    # -------------------
     for _ in range(warm_up):
         x, y = _generate_data_batch(cfg, device=device)
-        model.zero_grad(set_to_none=True)
 
-        logits = model(x)
-        if mode == StepMode.FORWARD_BACKWARD:
+        if mode == StepMode.FORWARD:
+            # 不建图
+            with torch.inference_mode():
+                _ = model(x)
+        else:
+            model.zero_grad(set_to_none=True)
+            logits = model(x)
             loss = cross_entropy(logits, y)
             loss.backward()
 
         if device.type == "cuda":
             torch.cuda.synchronize()
 
-    times = []
+    # -------------------
+    # Measure
+    # -------------------
+    times: list[float] = []
     for _ in range(nsteps):
         x, y = _generate_data_batch(cfg, device=device)
-        model.zero_grad(set_to_none=True)
+
+        if mode != StepMode.FORWARD:
+            model.zero_grad(set_to_none=True)
 
         start = timer()
-        logits = model(x)
 
         if mode == StepMode.FORWARD:
-            if device.type == "cuda":
-                torch.cuda.synchronize()
-            end = timer()  
-
-        elif mode == StepMode.FORWARD_BACKWARD:
-            loss = cross_entropy(logits, y)
-            loss.backward()
-
+            with torch.inference_mode():
+                _ = model(x)
             if device.type == "cuda":
                 torch.cuda.synchronize()
             end = timer()
+
+        elif mode == StepMode.FORWARD_BACKWARD:
+            logits = model(x)
+            loss = cross_entropy(logits, y)
+            loss.backward()
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            end = timer()
+
         else:
-            raise ValueError(f"mode can only be forward or forward_backward, but now it's {mode}")
-        elapsed = end - start
-        times.append(elapsed)
+            raise ValueError(f"mode must be {StepMode.FORWARD.value} or {StepMode.FORWARD_BACKWARD.value}")
+
+        times.append(end - start)
 
     return mean(times), stdev(times)
 
