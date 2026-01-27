@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from timeit import default_timer as timer
 from cs336_basics.nn.transformer import TransformerLM
 from cs336_basics.losses import cross_entropy
 from cs336_basics.optim import AdamW
@@ -8,6 +9,7 @@ from jaxtyping import Int
 import argparse
 import torch.cuda.nvtx as nvtx
 from enum import Enum
+from statistics import stdev, mean
 
 
 @dataclass(frozen=True)
@@ -19,11 +21,10 @@ class ModelConfig:
     context_len: int = 128
     vocab_size: int = 10000
     batch_size: int = 4
-    optimizer: str = "sgd"
     lr: float = 3e-4
 
 class StepMode(Enum):
-    FORWARD = "forward"
+    FORWARD_ONLY = "forward_only"
     TRAIN_STEP = "train_step"
 
 def run_profiling(
@@ -38,18 +39,18 @@ def run_profiling(
     
     model = _build_model(cfg)
     model.to(device=device, dtype=dtype)
-    if mode == StepMode.FORWARD.value:
+    if mode == StepMode.FORWARD_ONLY.value:
         model.eval()
     else:
         model.train()
 
-    optimizer = _build_optimizer(cfg)(model.parameters(), lr=cfg.lr)
+    optimizer = AdamW(model.parameters(), lr=cfg.lr)
     
     with nvtx.range("warmup"):
         for _ in range(warm_up):
             x, y = _generate_data_batch(cfg, device=device)
 
-            if mode == StepMode.FORWARD.value:
+            if mode == StepMode.FORWARD_ONLY.value:
                 with torch.no_grad():
                     logits = model(x)
             else:
@@ -59,24 +60,50 @@ def run_profiling(
                 loss.backward()
                 optimizer.step()
 
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+
+    times: list[float] = []
     with nvtx.range("measure"):
         for _ in range(nsteps):
             x, y = _generate_data_batch(cfg, device=device)
 
-            if mode == StepMode.FORWARD.value:
+            start = timer()
+
+            if mode == StepMode.FORWARD_ONLY.value:
+
                 with nvtx.range("forward"):
                     with torch.no_grad():
                         logits = model(x)
+
+                    if device.type == "cuda":
+                        torch.cuda.synchronize()
+
+                end = timer()
+
             else:
                 optimizer.zero_grad(set_to_none=True)
+
                 with nvtx.range("forward"):
                     logits = model(x)
+
                 with nvtx.range("loss"):
                     loss = cross_entropy(logits, y)
+
                 with nvtx.range("backward"):
                     loss.backward()
+
                 with nvtx.range("optimizer_step"):
                     optimizer.step()
+
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+
+                end = timer()
+
+            times.append(end - start)
+
+    return mean(times), stdev(times)
 
 
 
@@ -94,13 +121,6 @@ def _build_model(
         rope_theta=10000
     )
     return model
-
-def _build_optimizer(cfg: ModelConfig):
-    if cfg.optimizer.lower() == "sgd":
-        return torch.optim.SGD
-    if cfg.optimizer.lower() == 'adamw':
-        return AdamW
-    raise ValueError(f"the name of optimizer must be sgd or adamW, but here it's {cfg.optimizer!r}")
 
 def _generate_data_batch(
         cfg:ModelConfig,
@@ -122,8 +142,8 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="run benchmark")
 
     p.add_argument("--model-tag", type=str, default=None, help="Model size label (e.g., small, medium, large)")
-    p.add_argument("--mode", type=str, default="forward",
-                choices=["forward", "train_step"])
+    p.add_argument("--mode", type=str, default="forward_only",
+                choices=["forward_only", "train_step"])
     
     # Model hyperparameters
     p.add_argument("--d-model", type=int, default=768)
@@ -135,12 +155,11 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--batch-size", type=int, default=4)
 
     # OPtimizer hyperparameters
-    p.add_argument("--optimizer", type=str, default="sgd")
     p.add_argument("--lr", type=float, default=3e-4)    
 
     # Benchmark hyperparameters
     p.add_argument("--warm-up", type=int, default=5)
-    p.add_argument("--nsteps", type=int, default=1)
+    p.add_argument("--nsteps", type=int, default=10)
 
     # Runtime
     p.add_argument("--device", type=str, default="auto",
@@ -177,7 +196,6 @@ def main():
         context_len=args.context_len,
         vocab_size=args.vocab_size,
         batch_size=args.batch_size,
-        optimizer=args.optimizer,
         lr=args.lr
     )
 
