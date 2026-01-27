@@ -33,7 +33,7 @@ run_one () {
 
   echo "Running: ${model_tag} mode=${mode} L=${num_layers} d=${d_model} h=${num_heads} ff=${d_ff}"
 
-  python "${ROOT}/benchmark.py" \
+  python "${ROOT}/cs336_systems/benchmark.py" \
     --model-tag "${model_tag}" \
     --mode "${mode}" \
     --warm-up "${WARM_UP}" \

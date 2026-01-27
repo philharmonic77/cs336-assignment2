@@ -2,10 +2,10 @@
 set -u
 set -o pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY_SCRIPT="${ROOT}/cs336_systems/nsys_profile.py"
 
-OUT_DIR="${ROOT}/cs336_systems/results/nsys"
+OUT_DIR="${ROOT}/results/nsys"
 LOG_JSONL="${OUT_DIR}/runs.jsonl"
 mkdir -p "${OUT_DIR}"
 : > "${LOG_JSONL}"
