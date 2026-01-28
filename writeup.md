@@ -104,3 +104,10 @@ In contrast, Nsight Systems reports runtimes of 6.27 ms (scores), 4.09 ms (softm
 ![](assets/nsys_profile_large_256_forward_annotated.png)
 
 
+### Problem (mixed_precision_accumulation): 1 point
+
+This experiment shows that numerical error is dominated by the precision used for accumulation rather than the precision of individual operands. Accumulating FP16 values in FP16 leads to large systematic error due to repeated rounding, while accumulating the same FP16 values in FP32 significantly improves numerical accuracy. This motivates mixed-precision training, where compute-heavy operations use low precision but reductions and accumulations are kept in FP32.
+![](assets/mixed_precision_accumulation.png)
+
+
+### Problem (benchmarking_mixed_precision): 2 points
