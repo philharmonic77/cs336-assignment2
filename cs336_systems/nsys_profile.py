@@ -15,6 +15,11 @@ from jaxtyping import Int
 from cs336_basics.nn.transformer import TransformerLM
 from cs336_basics.losses import cross_entropy
 from cs336_basics.optim import AdamW
+import cs336_basics.nn.attention  as attn_mod
+
+from jaxtyping import Float, Int, Bool
+import math
+from einops import einsum
 
 
 @dataclass(frozen=True)
@@ -27,10 +32,11 @@ class ModelConfig:
     vocab_size: int = 10000
     batch_size: int = 4
     lr: float = 3e-4
+    annotated:bool = False
 
 
 def _build_model(cfg: ModelConfig) -> TransformerLM:
-    return TransformerLM(
+    model = TransformerLM(
         vocab_size=cfg.vocab_size,
         context_length=cfg.context_len,
         num_layers=cfg.num_layers,
@@ -39,6 +45,9 @@ def _build_model(cfg: ModelConfig) -> TransformerLM:
         d_ff=cfg.d_ff,
         rope_theta=10000,
     )
+    if cfg.annotated:
+        attn_mod.scaled_dot_product_attention = annotated_scaled_dot_product_attention
+    return model
 
 
 def _generate_data_batch(
@@ -86,6 +95,7 @@ def run_once(
     device: torch.device,
     dtype: torch.dtype,
 ) -> tuple[float, float]:
+    
     model = _build_model(cfg).to(device=device, dtype=dtype)
     optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
@@ -156,6 +166,43 @@ def run_once(
     sd = stdev(times) if len(times) > 1 else 0.0
     return avg, sd
 
+@nvtx.range("scaled dot product attention")
+def annotated_scaled_dot_product_attention(
+    Q: Float[Tensor, " ... n d_k"],
+    K: Float[Tensor, " ... m d_k"],
+    V: Float[Tensor, " ... m d_v"],
+    mask: Bool[Tensor, " ... n m"] | None = None,       
+) -> Float[Tensor, "... n d_v"]:
+    d_k = Q.shape[-1]
+    assert d_k == K.shape[-1] 
+    assert K.shape[-2] == V.shape[-2] 
+
+    with nvtx.range("computing attention scores"):
+        scores: Float[Tensor, "... n m"] = einsum(Q, K, "... n d_k, ... m d_k -> ... n m") / math.sqrt(d_k)
+
+    if mask is not None:
+        assert mask.shape[-1] == K.shape[-2]
+        assert mask.shape[-2] == Q.shape[-2]
+
+        scores: Float[Tensor, "... n m"] = scores.masked_fill(~mask, float("-inf")) 
+
+    with nvtx.range("computing softmax"):
+        scores: Float[Tensor, "... n m"] = softmax(scores, dim=-1)
+
+    with nvtx.range("final matmul"):
+        result: Float[Tensor, "... n d_v"] = einsum(scores, V, "... n m, ... m d_v -> ... n d_v")
+    
+    return result
+
+def softmax(
+    x: Float[Tensor, "... d_model"],
+    dim: int = -1
+) -> Tensor:
+    x_max = torch.max(x, dim=dim, keepdim=True).values
+    exp_x  = torch.exp(x - x_max)
+    
+    return exp_x / torch.sum(exp_x, dim=dim, keepdim=True)
+
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="nsys profile + timer + JSONL")
@@ -187,6 +234,9 @@ def _parse_args() -> argparse.Namespace:
     # Output
     p.add_argument("--output", type=str, default="results/nsys_profile_times.jsonl")
 
+    # use annotated self-attn or not
+    p.add_argument("--annotated", action="store_true")
+
     return p.parse_args()
 
 
@@ -202,6 +252,7 @@ def main() -> None:
         vocab_size=args.vocab_size,
         batch_size=args.batch_size,
         lr=args.lr,
+        annotated=args.annotated
     )
 
     device = _resolve_device(args.device)
