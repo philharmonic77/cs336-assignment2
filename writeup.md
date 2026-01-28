@@ -103,11 +103,34 @@ In contrast, Nsight Systems reports runtimes of 6.27 ms (scores), 4.09 ms (softm
 
 ![](assets/nsys_profile_large_256_forward_annotated.png)
 
+Here is the script used: [[bash]](scripts/run_nsys_profile_annotated_attention.sh)
+
 
 ### Problem (mixed_precision_accumulation): 1 point
 
 This experiment shows that numerical error is dominated by the precision used for accumulation rather than the precision of individual operands. Accumulating FP16 values in FP16 leads to large systematic error due to repeated rounding, while accumulating the same FP16 values in FP32 significantly improves numerical accuracy. This motivates mixed-precision training, where compute-heavy operations use low precision but reductions and accumulations are kept in FP32.
+
 ![](assets/mixed_precision_accumulation.png)
 
 
 ### Problem (benchmarking_mixed_precision): 2 points
+(a) The data types for each of the components:  
+- parameters: FP32
+- fc1 output: FP16
+- layernorm output: FP16 (with FP32 internal accumulation/reduction)
+- logits (fc2 output): FP16
+- loss: FP32
+- gradients: FP32
+
+(b) Below is the formula：
+
+1. Calculate RMS:
+$\mathrm{RMS}(\mathbf{x}) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} x_i^2 + \epsilon}$
+
+2. Normalize: 
+$\hat{x}_i = \frac{x_i}{\mathrm{RMS}(\mathbf{x})}$
+
+3. Scaling:
+$y_i = \gamma_i \cdot \hat{x}_i$
+
+Squaring and accumulation operations in layer normalization are sensitive to numerical range, since intermediate values can become large and overflow when using FP16. FP16 has a limited exponent range, making such reductions unstable. In contrast, BF16 has the same exponent range as FP32, so it is much less prone to overflow, and layer normalization does not require special handling when using BF16.
