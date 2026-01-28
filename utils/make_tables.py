@@ -8,13 +8,14 @@ def fmt_s(mean_s: float, std_s: float) -> str:
 
 def main():
     ROOT = Path(__file__).resolve().parents[1]  
-    in_path = ROOT / "results" / "first_benchmark.jsonl"
-    out_md = ROOT / "results" / "first_benchmark.md"
+
+    in_path = ROOT / "results" / "nsys" / "times_warmup_1.jsonl"
+    out_md = ROOT / "results" / "nsys" / "times_warmup_1.md"
 
     df = pd.read_json(in_path, lines=True)
 
-    # 只保留我们关心的列
-    df = df[["model_tag", "mode", "mean_s", "std_s"]]
+    # 只保留我们关心的行和列
+    df = df.query("context_len == 128")[["model_tag", "mode", "mean_s", "std_s"]]
 
     # 透视：行 = model_tag，列 = mode，值 = mean/std
     mean_p = df.pivot(index="model_tag", columns="mode", values="mean_s")
@@ -23,19 +24,16 @@ def main():
     # 组装输出表
     rows = []
     for tag in mean_p.index:
-        f_mean = float(mean_p.loc[tag, "forward"]) # type: ignore
-        f_std  = float(std_p.loc[tag,  "forward"]) # type: ignore
+        f_mean = float(mean_p.loc[tag, "forward_only"]) # type: ignore
+        f_std  = float(std_p.loc[tag,  "forward_only"]) # type: ignore
 
-        fb_mean = float(mean_p.loc[tag, "forward_backward"]) # type: ignore
-        fb_std  = float(std_p.loc[tag,  "forward_backward"]) # type: ignore
-
-        backward_s = fb_mean - f_mean
+        fb_mean = float(mean_p.loc[tag, "train_step"]) # type: ignore
+        fb_std  = float(std_p.loc[tag,  "train_step"]) # type: ignore
 
         rows.append({
             "model_tag": tag,
-            "forward (s)": fmt_s(f_mean, f_std),
-            "forward+backward (s)": fmt_s(fb_mean, fb_std),
-            "backward est. (s)": f"{backward_s:.4f}",
+            "forward(infer) /s": fmt_s(f_mean, f_std),
+            "train_step /s": fmt_s(fb_mean, fb_std),
         })
 
     out_df = pd.DataFrame(rows).sort_values("model_tag")
