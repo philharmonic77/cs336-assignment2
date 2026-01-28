@@ -88,4 +88,18 @@ During the forward pass, the CUDA kernel that dominates cumulative GPU time is t
 
 ![](assets/nsys_profile_large_256_train.png)
 
+(e)	For the large model with context length 256, the FLOPs are:
+-  2BS^2d_h for computing attention scores
+- 4BS^2 for softmax
+- 2BS^2d_h for the final matmul
+
+giving an approximate FLOP ratio of **64 : 1 : 64**.
+
+
+In contrast, Nsight Systems reports runtimes of 6.27 ms (scores), 4.09 ms (softmax), and 3.79 ms (final matmul), because:
+- softmax is implemented as multiple unfused element-wise kernels with high memory traffic
+- computing attention scores additionally includes reshapes and scaling operations beyond pure matrix multiplication.
+
+![](assets/nsys_profile_large_256_forward_annotated.png)
+
 
