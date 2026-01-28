@@ -62,6 +62,7 @@ Also, all experiments were conducted on a single NVIDIA RTX 4090 GPU with 24 GB 
 | 2.7B | 1024 | 1.0402 |  |  |  |  |
 
 (a) The forward-pass runtime measured by Nsight Systems closely matches the wall-clock measurements obtained using Python’s timeit, indicating that the benchmark accurately captures steady-state GPU execution time.
+
 (b) Using large model with 256 context length as emample:
 - forward(inference)
 
