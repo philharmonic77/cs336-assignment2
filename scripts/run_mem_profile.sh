@@ -19,7 +19,7 @@ BATCH_SIZE=1
 MODES=(forward_only train_step)
 
 MODELS=(
-  "2.7B   2560  10240  32  32"
+  "xl     1600  6400   48  25"
 )
 
 run_one () {
