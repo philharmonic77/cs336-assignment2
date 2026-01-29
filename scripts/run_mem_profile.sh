@@ -40,7 +40,8 @@ run_one () {
     --num-layers "${L}" \
     --num-heads "${h}" \
     --batch-size "${BATCH_SIZE}" \
-    --mem-profile
+    --mem-profile \
+    --use-bf16 \
 }
 
 for line in "${MODELS[@]}"; do
