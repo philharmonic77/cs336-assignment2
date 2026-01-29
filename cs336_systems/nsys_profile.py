@@ -94,7 +94,10 @@ def cuda_memory_profile(enabled: bool, out_path: str):
         yield
         return
 
-    torch.cuda.memory._record_memory_history(max_entries=1_000_000)
+    torch.cuda.memory._record_memory_history(
+        max_entries=1_000_000,
+        stacks="all",    
+        context="all")
     try:
         yield
     finally:
