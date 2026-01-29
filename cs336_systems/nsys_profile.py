@@ -119,54 +119,55 @@ def run_once(
     dtype: torch.dtype,
 ) -> tuple[float, float]:
     
-    model = _build_model(cfg).to(device=device, dtype=dtype)
-    optimizer = AdamW(model.parameters(), lr=cfg.lr)
-
-    if mode == "forward_only":
-        model.eval()
-    elif mode == "train_step":
-        model.train()
-    else:
-        raise ValueError(f"Unknown mode: {mode!r}")
-    
-    if use_bf16:
-        amp_ctx = torch.autocast(device_type=device.type, dtype=torch.bfloat16)
-    else:
-        amp_ctx = nullcontext()
-
     if mem_profile:
         mem_ctx = cuda_memory_profile(True, mem_out)
     else:
         mem_ctx = nullcontext()
-
-    # -----------------
-    # Warmup (sync each step)
-    # -----------------
-    with nvtx.range("warmup"):
-        for _ in range(warm_up):
-            x, y = _generate_data_batch(cfg, device)
-
-            if mode == "forward_only":
-                with amp_ctx:
-                    with torch.no_grad():
-                        _ = model(x)
-            else:
-                optimizer.zero_grad(set_to_none=True)
-                with amp_ctx:
-                    logits = model(x)
-                    loss = cross_entropy(logits, y)
-                loss.backward()
-                optimizer.step()
-
-            if device.type == "cuda":
-                torch.cuda.synchronize()
-
-    # -----------------
-    # Measure (timer includes GPU completion)
-    # -----------------
-    times: list[float] = []
-
+    
     with mem_ctx:
+    
+        model = _build_model(cfg).to(device=device, dtype=dtype)
+        optimizer = AdamW(model.parameters(), lr=cfg.lr)
+
+        if mode == "forward_only":
+            model.eval()
+        elif mode == "train_step":
+            model.train()
+        else:
+            raise ValueError(f"Unknown mode: {mode!r}")
+        
+        if use_bf16:
+            amp_ctx = torch.autocast(device_type=device.type, dtype=torch.bfloat16)
+        else:
+            amp_ctx = nullcontext()
+
+        # -----------------
+        # Warmup (sync each step)
+        # -----------------
+        with nvtx.range("warmup"):
+            for _ in range(warm_up):
+                x, y = _generate_data_batch(cfg, device)
+
+                if mode == "forward_only":
+                    with amp_ctx:
+                        with torch.no_grad():
+                            _ = model(x)
+                else:
+                    optimizer.zero_grad(set_to_none=True)
+                    with amp_ctx:
+                        logits = model(x)
+                        loss = cross_entropy(logits, y)
+                    loss.backward()
+                    optimizer.step()
+
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+
+        # -----------------
+        # Measure (timer includes GPU completion)
+        # -----------------
+        times: list[float] = []
+
         with nvtx.range("measure"):
             for _ in range(nsteps):
                 x, y = _generate_data_batch(cfg, device)
