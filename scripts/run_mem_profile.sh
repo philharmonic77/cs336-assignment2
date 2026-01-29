@@ -10,12 +10,12 @@ OUT_DIR="${ROOT}/results/nsys"
 mkdir -p "${OUT_DIR}"
 
 WARM_UP=5
-NSTEPS=1
+NSTEPS=1 # NOTE: NSTEPS=1 is intentional for memory profiling
 DEVICE=cuda
 DTYPE=fp32
 
 CTX_LENS=(128 256 512)
-BATCH_SIZE=1 # NOTE: NSTEPS=1 is intentional for memory profiling
+BATCH_SIZE=1 
 MODES=(forward_only train_step)
 
 MODELS=(
@@ -39,7 +39,7 @@ run_one () {
     --d-ff "${ff}" \
     --num-layers "${L}" \
     --num-heads "${h}" \
-    --batch-size="${BATCH_SIZE}" \
+    --batch-size "${BATCH_SIZE}" \
     --mem-profile
 }
 
