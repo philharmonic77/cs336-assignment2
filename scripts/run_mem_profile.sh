@@ -9,8 +9,8 @@ OUT_DIR="${ROOT}/results/nsys"
 
 mkdir -p "${OUT_DIR}"
 
-WARM_UP=5
-NSTEPS=1
+WARM_UP=0
+NSTEPS=3
 DEVICE=cuda
 DTYPE=fp32
 
