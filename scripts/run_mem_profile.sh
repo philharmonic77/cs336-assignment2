@@ -10,7 +10,7 @@ OUT_DIR="${ROOT}/results/nsys"
 mkdir -p "${OUT_DIR}"
 
 WARM_UP=5
-NSTEPS=1 # NOTE: NSTEPS=1 is intentional for memory profiling
+NSTEPS=5 
 DEVICE=cuda
 DTYPE=fp32
 
