@@ -218,3 +218,47 @@ Squaring and accumulation operations in layer normalization are sensitive to num
 | 2.7B | 1024| 0.5232 | 1.0712 | <span style="color:red">+51.1%</span> |  |  |  |
 
 Here is the script used: [[bash]](scripts/run_nsys_profile_mixed_precision.sh)
+
+### Problem (memory_profiling): 4 points
+
+Because my GPU is an RTX 4090 with 24 GB of memory, I chose to run the large model with batch size = 2 and nsteps = 3 to obtain the results. 
+
+- Forward-only timeline: memory ramps up quickly during the first forward as activations / temporary buffers are allocated, then stays almost flat at a steady plateau (most later iterations reuse the same cached blocks, so you don’t see large peaks).
+
+![](assets/mem_profile_large_128_forward.png)
+
+- Train-step timeline: we can visually separate stages: 
+1. a rising slope during forward as activations accumulate for autograd
+2. a sharp peak when backward materializes large gradient/temporary workspaces, followed by a drop as many forward activations are freed once their gradients are computed
+3. a later step-up during optimizer step as AdamW state (m, v buffers) gets allocated and then persists across steps, which shifts the baseline upward for subsequent iterations.
+
+![](assets/mem_profile_large_128_train.png)
+
+As the context length increases, the forward and backward phases exhibit steeper memory growth and higher peak usage, because activation memory scales linearly with the context length.
+
+![](assets/mem_profile_large_512_train.png)
+
+(b)	Forward-only peaks are relatively flat across context lengths because the dominant footprint is parameters and allocator workspaces at this batch size.
+Training-step peaks increase with context length since activations (and saved tensors for backward) scale with sequence length; the maximum typically occurs around the end of backward / optimizer step.
+
+- FP32
+
+| Context Length | Forward Peak (GB) | Train Step Peak (GB) |
+|---------------:|------------------:|---------------------:|
+| 128            | ~3.9              | ~15.5                |
+| 256            | ~3.9              | ~15.5                |
+| 512            | ~4.0              | ~20.5                |
+
+- BF16
+
+| Context Length | Forward Peak (GB) | Train Step Peak (GB) |
+|---------------:|------------------:|---------------------:|
+| 128            | ~5.8              | ~15.5                |
+| 256            | ~5.8              | ~16.0                |
+| 512            | ~5.8              | ~19.5                |
+
+(c) BF16 mixed precision does not significantly reduce peak memory in this setup: forward peaks can even be higher, and training peaks are similar to FP32. This is because parameters, gradients, and AdamW optimizer states remain FP32, while only selected ops run in BF16; allocator workspaces and FP32 reductions further limit memory savings.
+
+(d)
+
+(e) 
