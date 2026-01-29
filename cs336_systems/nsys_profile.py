@@ -20,6 +20,7 @@ import cs336_basics.nn.attention  as attn_mod
 from jaxtyping import Float, Int, Bool
 import math
 from einops import einsum
+from contextlib import nullcontext
 
 
 @dataclass(frozen=True)
@@ -35,7 +36,11 @@ class ModelConfig:
     annotated:bool = False
 
 
+
+
 def _build_model(cfg: ModelConfig) -> TransformerLM:
+    if cfg.annotated:
+        attn_mod.scaled_dot_product_attention = annotated_scaled_dot_product_attention
     model = TransformerLM(
         vocab_size=cfg.vocab_size,
         context_length=cfg.context_len,
@@ -45,8 +50,6 @@ def _build_model(cfg: ModelConfig) -> TransformerLM:
         d_ff=cfg.d_ff,
         rope_theta=10000,
     )
-    if cfg.annotated:
-        attn_mod.scaled_dot_product_attention = annotated_scaled_dot_product_attention
     return model
 
 
@@ -92,6 +95,7 @@ def run_once(
     warm_up: int,
     nsteps: int,
     mode: str,  # "forward_only" | "train_step"
+    use_bf16: bool = False,
     device: torch.device,
     dtype: torch.dtype,
 ) -> tuple[float, float]:
@@ -105,6 +109,11 @@ def run_once(
         model.train()
     else:
         raise ValueError(f"Unknown mode: {mode!r}")
+    
+    if use_bf16:
+        amp_ctx = torch.autocast(device_type=device.type, dtype=torch.bfloat16)
+    else:
+        amp_ctx = nullcontext()
 
     # -----------------
     # Warmup (sync each step)
@@ -114,12 +123,14 @@ def run_once(
             x, y = _generate_data_batch(cfg, device)
 
             if mode == "forward_only":
-                with torch.no_grad():
-                    _ = model(x)
+                with amp_ctx:
+                    with torch.no_grad():
+                        _ = model(x)
             else:
                 optimizer.zero_grad(set_to_none=True)
-                logits = model(x)
-                loss = cross_entropy(logits, y)
+                with amp_ctx:
+                    logits = model(x)
+                    loss = cross_entropy(logits, y)
                 loss.backward()
                 optimizer.step()
 
@@ -138,17 +149,20 @@ def run_once(
 
             if mode == "forward_only":
                 with nvtx.range("forward"):
-                    with torch.no_grad():
-                        _ = model(x)
+                    with amp_ctx:
+                        with torch.no_grad():
+                            _ = model(x)
 
             else:
                 optimizer.zero_grad(set_to_none=True)
 
                 with nvtx.range("forward"):
-                    logits = model(x)
+                    with amp_ctx:
+                        logits = model(x)
 
                 with nvtx.range("loss"):
-                    loss = cross_entropy(logits, y)
+                    with amp_ctx:
+                        loss = cross_entropy(logits, y)
 
                 with nvtx.range("backward"):
                     loss.backward()
@@ -237,6 +251,9 @@ def _parse_args() -> argparse.Namespace:
     # use annotated self-attn or not
     p.add_argument("--annotated", action="store_true")
 
+    # use mixed precision or not
+    p.add_argument("--use-bf16", action="store_true")
+
     return p.parse_args()
 
 
@@ -263,13 +280,14 @@ def main() -> None:
         warm_up=args.warm_up,
         nsteps=args.nsteps,
         mode=args.mode,
+        use_bf16=args.use_bf16,
         device=device,
         dtype=dtype,
     )
 
     record = {
         "model_tag": args.model_tag,
-        "mode": args.mode,  # <- str, 不会再 .value
+        "mode": args.mode, 
         "num_layers": cfg.num_layers,
         "d_model": cfg.d_model,
         "d_ff": cfg.d_ff,
@@ -279,6 +297,7 @@ def main() -> None:
         "vocab_size": cfg.vocab_size,
         "warm_up": args.warm_up,
         "nsteps": args.nsteps,
+        "use_bf16": args.use_bf16,
         "device": str(device),
         "dtype": str(dtype),
         "mean_s": avg_s,
@@ -286,7 +305,6 @@ def main() -> None:
     }
     append_jsonl(Path(args.output), record)
 
-    # 打印一行（方便 bash log）
     print(json.dumps(record))
 
 
