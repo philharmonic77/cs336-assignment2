@@ -20,7 +20,7 @@ import cs336_basics.nn.attention  as attn_mod
 from jaxtyping import Float, Int, Bool
 import math
 from einops import einsum
-from contextlib import nullcontext
+from contextlib import nullcontext, contextmanager
 
 
 @dataclass(frozen=True)
@@ -88,6 +88,20 @@ def append_jsonl(path: Path, record: dict) -> None:
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
 
+@contextmanager
+def cuda_memory_profile(enabled: bool, out_path: str):
+    if not enabled:
+        yield
+        return
+
+    torch.cuda.memory._record_memory_history(max_entries=1_000_000)
+    try:
+        yield
+    finally:
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        torch.cuda.memory._dump_snapshot(out_path)
+        torch.cuda.memory._record_memory_history(enabled=None)
+
 
 def run_once(
     cfg: ModelConfig,
@@ -96,6 +110,8 @@ def run_once(
     nsteps: int,
     mode: str,  # "forward_only" | "train_step"
     use_bf16: bool = False,
+    mem_profile: bool = False,
+    mem_out: str = "",
     device: torch.device,
     dtype: torch.dtype,
 ) -> tuple[float, float]:
@@ -114,6 +130,11 @@ def run_once(
         amp_ctx = torch.autocast(device_type=device.type, dtype=torch.bfloat16)
     else:
         amp_ctx = nullcontext()
+
+    if mem_profile:
+        mem_ctx = cuda_memory_profile(True, mem_out)
+    else:
+        mem_ctx = nullcontext()
 
     # -----------------
     # Warmup (sync each step)
@@ -141,40 +162,42 @@ def run_once(
     # Measure (timer includes GPU completion)
     # -----------------
     times: list[float] = []
-    with nvtx.range("measure"):
-        for _ in range(nsteps):
-            x, y = _generate_data_batch(cfg, device)
 
-            start = timer()
+    with mem_ctx:
+        with nvtx.range("measure"):
+            for _ in range(nsteps):
+                x, y = _generate_data_batch(cfg, device)
 
-            if mode == "forward_only":
-                with nvtx.range("forward"):
-                    with amp_ctx:
-                        with torch.no_grad():
-                            _ = model(x)
+                start = timer()
 
-            else:
-                optimizer.zero_grad(set_to_none=True)
+                if mode == "forward_only":
+                    with nvtx.range("forward"):
+                        with amp_ctx:
+                            with torch.no_grad():
+                                _ = model(x)
 
-                with nvtx.range("forward"):
-                    with amp_ctx:
-                        logits = model(x)
+                else:
+                    optimizer.zero_grad(set_to_none=True)
 
-                with nvtx.range("loss"):
-                    with amp_ctx:
-                        loss = cross_entropy(logits, y)
+                    with nvtx.range("forward"):
+                        with amp_ctx:
+                            logits = model(x)
 
-                with nvtx.range("backward"):
-                    loss.backward()
+                    with nvtx.range("loss"):
+                        with amp_ctx:
+                            loss = cross_entropy(logits, y)
 
-                with nvtx.range("optimizer_step"):
-                    optimizer.step()
+                    with nvtx.range("backward"):
+                        loss.backward()
 
-            if device.type == "cuda":
-                torch.cuda.synchronize()
+                    with nvtx.range("optimizer_step"):
+                        optimizer.step()
 
-            end = timer()
-            times.append(end - start)
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+
+                end = timer()
+                times.append(end - start)
 
     avg = mean(times)
     sd = stdev(times) if len(times) > 1 else 0.0
@@ -254,6 +277,9 @@ def _parse_args() -> argparse.Namespace:
     # use mixed precision or not
     p.add_argument("--use-bf16", action="store_true")
 
+    # record mem profile or not
+    p.add_argument("--mem-profile", action="store_true")
+
     return p.parse_args()
 
 
@@ -275,12 +301,22 @@ def main() -> None:
     device = _resolve_device(args.device)
     dtype = _resolve_dtype(args.dtype)
 
+    mem_out = ""
+    if args.mem_profile:
+        mem_out = (
+            f"results/nsys/mem/"
+            f"{args.model_tag}_ctx{args.context_len}_{args.mode}"
+            f"{'_bf16' if args.use_bf16 else ''}.pickle"
+        )
+
     avg_s, std_s = run_once(
         cfg,
         warm_up=args.warm_up,
         nsteps=args.nsteps,
         mode=args.mode,
         use_bf16=args.use_bf16,
+        mem_profile=args.mem_profile,
+        mem_out=mem_out,
         device=device,
         dtype=dtype,
     )

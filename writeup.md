@@ -216,3 +216,5 @@ Squaring and accumulation operations in layer normalization are sensitive to num
 | 2.7B | 256 | 0.1216 | 0.2316 | <span style="color:red">+47.5%</span> |  |  |  |
 | 2.7B | 512 | 0.2128 | 0.4599 | <span style="color:red">+53.7%</span> |  |  |  |
 | 2.7B | 1024| 0.5232 | 1.0712 | <span style="color:red">+51.1%</span> |  |  |  |
+
+Here is the script used: [[bash]](scripts/run_nsys_profile_mixed_precision.sh)
