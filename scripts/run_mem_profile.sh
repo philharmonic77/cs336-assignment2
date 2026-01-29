@@ -15,7 +15,7 @@ DEVICE=cuda
 DTYPE=fp32
 
 CTX_LENS=(128 256 512)
-BATCH_SIZE=1 
+BATCH_SIZE=2
 MODES=(forward_only train_step)
 
 MODELS=(
