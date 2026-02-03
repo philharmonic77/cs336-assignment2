@@ -259,6 +259,31 @@ Training-step peaks increase with context length since activations (and saved te
 
 (c) BF16 mixed precision does not significantly reduce peak memory in this setup: forward peaks can even be higher, and training peaks are similar to FP32. This is because parameters, gradients, and AdamW optimizer states remain FP32, while only selected ops run in BF16; allocator workspaces and FP32 reductions further limit memory savings.
 
-(d)
+Mixed precision mainly reduces activation memory, whose contribution is relatively small at fixed batch size and context length, so the overall peak memory remains similar.
 
-(e) 
+(d) Using large model with context_len=512 as an example, 
+ $$ residualstream(Mb) = BSD = 2 * 512 * 1280 * 4 / 1024^2 = 5 $$
+
+(e) The largest allocations shown are approximately 48.8 MiB.
+From the stack trace, these allocations originate from large parameter tensors created via empty_strided during model initialization, and their size matches the token embedding (and similarly sized lm_head) weight matrices of shape (V, D) stored in FP32.
+
+$$\text{Memory} = V \times D \times 4 \;\text{bytes} = 10000 \times 1280 \times 4 \approx 48.8\;\text{MiB}$$
+
+```
+328 Addr: b'7fa1c6000000_0, Size: 48.8MiB (51200000 bytes) allocation, Total memory used after allocation: 3.6GiB (3877778432 bytes), Compile context: None, timestamp Thu Jan 29 2026 17:29:42 GMT+0800 (China Standard Time)
+CUDACachingAllocator.cpp:0:c10::cuda::CUDACachingAllocator::Native::DeviceCachingAllocator::malloc(signed char, unsigned long, CUstream_st*)
+...
+/usr/local/src/conda/python-3.12.3/Objects/descrobject.c:365:method_vectorcall_VARARGS_KEYWORDS
+/root/autodl-tmp/cs336-assignment2/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py:1329:convert
+??:0:__libc_init_first
+/root/autodl-tmp/cs336-assignment2/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py:930:_apply
+/root/autodl-tmp/cs336-assignment2/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py:903:_apply
+/root/autodl-tmp/cs336-assignment2/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py:1343:to
+```
+
+The second-largest allocations are ~25.0 MiB, which matches the size of an FP32 $D\times F (or F\times D)$ matrix in the FFN:
+$$\text{Memory}=D\cdot F \cdot 4 = 1280 \times 5120 \times 4 = 26{,}214{,}400\ \text{bytes} \approx 25.0\ \text{MiB}$$
+My guess is that these blocks correspond to the per-layer feed-forward Linear weights (and, in training runs, additional same-sized tensors such as gradients and AdamW moment buffers).
+
+The next most frequent large allocations are around 6.3 MiB, which closely match the size of a single $D \times D$ weight matrix in FP32.
+For the large model with D=1280, this is $1280^2 \times 4 \approx 6.25 MiB$, corresponding to per-layer linear projection weights in self-attention (e.g. $W_q, W_k, W_v, W_o$), and they appear repeatedly because each Transformer layer contains several such matrices (and their associated buffers).
