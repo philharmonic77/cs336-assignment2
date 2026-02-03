@@ -287,3 +287,5 @@ My guess is that these blocks correspond to the per-layer feed-forward Linear we
 
 The next most frequent large allocations are around 6.3 MiB, which closely match the size of a single $D \times D$ weight matrix in FP32.
 For the large model with D=1280, this is $1280^2 \times 4 \approx 6.25 MiB$, corresponding to per-layer linear projection weights in self-attention (e.g. $W_q, W_k, W_v, W_o$), and they appear repeatedly because each Transformer layer contains several such matrices (and their associated buffers).
+
+Here is the script used: [[bash]](scripts/run_mem_profile.sh)
