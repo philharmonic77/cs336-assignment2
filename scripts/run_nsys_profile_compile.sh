@@ -2,7 +2,7 @@
 set -e
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PY_SCRIPT="${ROOT}/cs336_systems/nsys_profile.py"
+SCRIPT="${ROOT}/cs336_systems/nsys_profile.py"
 OUT="${ROOT}/results/nsys/model_benchmark_mix_precision_compile.jsonl"
 mkdir -p "${ROOT}/results/nsys"
 : > "$OUT"
@@ -26,7 +26,7 @@ MODELS=(
 
 run_one () {
   local tag="$1" ctx="$2" mode="$3" d="$4" ff="$5" L="$6" h="$7" use_compile="$8"
-  echo "Run: ${tag} ctx=${ctx} mode=${mode}"
+  echo "Run: ${tag} ctx=${ctx} mode=${mode} compile=${use_compile}"
   uv run python "${SCRIPT}" \
     --device "${DEVICE}" \
     --dtype "${DTYPE}" \
@@ -41,7 +41,8 @@ run_one () {
     --num-heads "${h}" \
     --output "${OUT}" \
     --use-bf16 \
-    $([[ "${use_compile}" -eq 1 ]] && printf "%s" "--use-torch-compile")
+    $([[ "${use_compile}" -eq 1 ]] && printf "%s" "--use-torch-compile") \
+    > /dev/null
 }
 
 for line in "${MODELS[@]}"; do
