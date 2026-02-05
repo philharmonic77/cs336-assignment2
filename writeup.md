@@ -342,3 +342,55 @@ Here are the time and memory results:
 | 16384 | OOM | OOM | OOM | OOM |
 
 Here is the script used: [[bash]](scripts/run_attn_benchmark.sh)
+
+### Problem (torch_compile): 2 points
+(a)
+- d_model = 16
+
+| T | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
+|---|--------------|---------------|------------------|------------|
+| 256 | 0.31 | 0.52 | 20.84 | 24.97 |
+| 1024 | 0.35 | 0.72 | 83.38 | 147.88 |
+| 4096 | 2.88 | 8.12 | 1064.75 | 2090.75 |
+| 8192 | 10.81 | 31.03 | 4193.25 | 8293.25 |
+| 16384 | OOM | OOM | OOM | OOM |
+
+- d_model = 32
+
+| T | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
+|---|--------------|---------------|------------------|------------|
+| 256 | 0.38 | 0.49 | 21.34 | 25.59 |
+| 1024 | 0.36 | 0.75 | 85.38 | 150.38 |
+| 4096 | 2.84 | 8.14 | 1072.75 | 2100.75 |
+| 8192 | 10.86 | 31.01 | 4209.25 | 8313.25 |
+| 16384 | OOM | OOM | OOM | OOM |
+
+- d_model = 64
+
+| T | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
+|---|--------------|---------------|------------------|------------|
+| 256 | 0.25 | 0.37 | 22.34 | 26.84 |
+| 1024 | 0.33 | 0.74 | 89.38 | 155.38 |
+| 4096 | 2.94 | 8.15 | 1088.75 | 2120.75 |
+| 8192 | 11.11 | 31.33 | 4241.25 | 8353.25 |
+| 16384 | OOM | OOM | OOM | OOM |
+
+- d_model = 128
+
+| T | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
+|---|--------------|---------------|------------------|------------|
+| 256 | 0.34 | 0.51 | 24.34 | 29.34 |
+| 1024 | 0.37 | 0.79 | 97.38 | 165.38 |
+| 4096 | 3.30 | 8.64 | 1120.75 | 2160.75 |
+| 8192 | 12.40 | 33.03 | 4305.25 | 8433.25 |
+| 16384 | OOM | OOM | OOM | OOM |
+
+Compared to eager execution, torch.compile significantly reduces both forward and backward runtimes, and also lowers the peak memory usage during backward. However, the memory saved for backward remains dominated by the O(BS^2) attention activations, so the out-of-memory boundary is unchanged.
+
+| Forward time | Backward time |
+|-------------|---------------|
+| ![](assets/attn_forward_time.png) | ![](assets/attn_backward_time.png) |
+
+| Memory before backward | Peak memory |
+|------------------------|-------------|
+| ![](assets/attn_mem_before.png) | ![](assets/attn_peak_mem.png) |

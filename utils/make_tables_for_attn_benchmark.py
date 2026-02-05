@@ -1,6 +1,6 @@
 import json
 
-INPUT = "results/attn/attn_benchmark.jsonl"
+INPUT = "results/attn/attn_benchmark_compile.jsonl"
 D_MODELS = [16, 32, 64, 128]
 SEQ_LENS = [256, 1024, 4096, 8192, 16384]
 

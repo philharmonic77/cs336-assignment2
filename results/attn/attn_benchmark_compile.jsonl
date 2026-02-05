@@ -1,0 +1,20 @@
+{"d_model": 16, "context_len": 256, "compiled": true, "forward_time(s)": 0.00030750619247555734, "backward_time(s)": 0.0005239212140440941, "before_backward_mem(M)": 20.84423828125, "peak_mem(M)": 24.9697265625, "status": "OK"}
+{"d_model": 16, "context_len": 1024, "compiled": true, "forward_time(s)": 0.00034529190510511397, "backward_time(s)": 0.0007229834794998169, "before_backward_mem(M)": 83.37548828125, "peak_mem(M)": 147.8759765625, "status": "OK"}
+{"d_model": 16, "context_len": 4096, "compiled": true, "forward_time(s)": 0.002884036470204592, "backward_time(s)": 0.008116733152419328, "before_backward_mem(M)": 1064.75048828125, "peak_mem(M)": 2090.7509765625, "status": "OK"}
+{"d_model": 16, "context_len": 8192, "compiled": true, "forward_time(s)": 0.010814271345734596, "backward_time(s)": 0.031031488329172133, "before_backward_mem(M)": 4193.25048828125, "peak_mem(M)": 8293.2509765625, "status": "OK"}
+{"d_model": 16, "context_len": 16384, "compiled": true, "status": "OOM"}
+{"d_model": 32, "context_len": 256, "compiled": true, "forward_time(s)": 0.0003843878209590912, "backward_time(s)": 0.00048550963401794434, "before_backward_mem(M)": 21.34423828125, "peak_mem(M)": 25.5947265625, "status": "OK"}
+{"d_model": 32, "context_len": 1024, "compiled": true, "forward_time(s)": 0.0003629969619214535, "backward_time(s)": 0.0007491011172533035, "before_backward_mem(M)": 85.37548828125, "peak_mem(M)": 150.3759765625, "status": "OK"}
+{"d_model": 32, "context_len": 4096, "compiled": true, "forward_time(s)": 0.00283519322052598, "backward_time(s)": 0.008138080760836601, "before_backward_mem(M)": 1072.75048828125, "peak_mem(M)": 2100.7509765625, "status": "OK"}
+{"d_model": 32, "context_len": 8192, "compiled": true, "forward_time(s)": 0.010858751311898231, "backward_time(s)": 0.031008957996964456, "before_backward_mem(M)": 4209.25048828125, "peak_mem(M)": 8313.2509765625, "status": "OK"}
+{"d_model": 32, "context_len": 16384, "compiled": true, "status": "OOM"}
+{"d_model": 64, "context_len": 256, "compiled": true, "forward_time(s)": 0.00024890774860978124, "backward_time(s)": 0.00037258254364132883, "before_backward_mem(M)": 22.34423828125, "peak_mem(M)": 26.8447265625, "status": "OK"}
+{"d_model": 64, "context_len": 1024, "compiled": true, "forward_time(s)": 0.0003289938345551491, "backward_time(s)": 0.0007435666583478451, "before_backward_mem(M)": 89.37548828125, "peak_mem(M)": 155.3759765625, "status": "OK"}
+{"d_model": 64, "context_len": 4096, "compiled": true, "forward_time(s)": 0.002938489504158497, "backward_time(s)": 0.008146441895514727, "before_backward_mem(M)": 1088.75048828125, "peak_mem(M)": 2120.7509765625, "status": "OK"}
+{"d_model": 64, "context_len": 8192, "compiled": true, "forward_time(s)": 0.011114000678062438, "backward_time(s)": 0.031333308443427084, "before_backward_mem(M)": 4241.25048828125, "peak_mem(M)": 8353.2509765625, "status": "OK"}
+{"d_model": 64, "context_len": 16384, "compiled": true, "status": "OOM"}
+{"d_model": 128, "context_len": 256, "compiled": true, "forward_time(s)": 0.0003358548879623413, "backward_time(s)": 0.0005088056437671185, "before_backward_mem(M)": 24.34423828125, "peak_mem(M)": 29.3447265625, "status": "OK"}
+{"d_model": 128, "context_len": 1024, "compiled": true, "forward_time(s)": 0.0003700182773172855, "backward_time(s)": 0.000788362268358469, "before_backward_mem(M)": 97.37548828125, "peak_mem(M)": 165.3759765625, "status": "OK"}
+{"d_model": 128, "context_len": 4096, "compiled": true, "forward_time(s)": 0.0033012695983052256, "backward_time(s)": 0.008640915900468827, "before_backward_mem(M)": 1120.75048828125, "peak_mem(M)": 2160.7509765625, "status": "OK"}
+{"d_model": 128, "context_len": 8192, "compiled": true, "forward_time(s)": 0.01239719396457076, "backward_time(s)": 0.03302977988496423, "before_backward_mem(M)": 4305.25048828125, "peak_mem(M)": 8433.2509765625, "status": "OK"}
+{"d_model": 128, "context_len": 16384, "compiled": true, "status": "OOM"}
