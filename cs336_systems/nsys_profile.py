@@ -213,12 +213,9 @@ def run_once(
 
     avg_time = mean(times)
     sd_time = stdev(times) if len(times) > 1 else 0.0
-
-    if not use_torch_compile:
-        return avg_time, sd_time
-
     avg_peak_mem = mean(peak_mems)
-    return avg_time, avg_peak_mem
+
+    return avg_time, sd_time, avg_peak_mem
 
 @nvtx.range("scaled dot product attention")
 def annotated_scaled_dot_product_attention(
@@ -329,75 +326,40 @@ def main() -> None:
             f"{'_bf16' if args.use_bf16 else ''}.pickle"
         )
     try:
-        if not args.use_torch_compile:
-            avg_s, std_s = run_once(
-                cfg,
-                warm_up=args.warm_up,
-                nsteps=args.nsteps,
-                mode=args.mode,
-                use_bf16=args.use_bf16,
-                mem_profile=args.mem_profile,
-                mem_out=mem_out,
-                use_torch_compile=False,
-                device=device,
-                dtype=dtype,
-            )
+        avg_s, std_s, avg_peak_mem = run_once(
+            cfg,
+            warm_up=args.warm_up,
+            nsteps=args.nsteps,
+            mode=args.mode,
+            use_bf16=args.use_bf16,
+            mem_profile=args.mem_profile,
+            mem_out=mem_out,
+            use_torch_compile=args.use_torch_compile,
+            device=device,
+            dtype=dtype,
+        )
 
-            record = {
-                "model_tag": args.model_tag,
-                "mode": args.mode,
-                "num_layers": cfg.num_layers,
-                "d_model": cfg.d_model,
-                "d_ff": cfg.d_ff,
-                "num_heads": cfg.num_heads,
-                "context_len": cfg.context_len,
-                "batch_size": cfg.batch_size,
-                "vocab_size": cfg.vocab_size,
-                "warm_up": args.warm_up,
-                "nsteps": args.nsteps,
-                "use_bf16": args.use_bf16,
-                "use_torch_compile": args.use_torch_compile,
-                "device": str(device),
-                "dtype": str(dtype),
-                "mean_s": avg_s,
-                "std_s": std_s,
-                "status": "OK",
-            }
-
-        else:
-            avg_s, avg_peak_mem = run_once(
-                cfg,
-                warm_up=args.warm_up,
-                nsteps=args.nsteps,
-                mode=args.mode,
-                use_bf16=args.use_bf16,
-                mem_profile=args.mem_profile,
-                mem_out=mem_out,
-                use_torch_compile=True,
-                device=device,
-                dtype=dtype,
-            )
-
-            record = {
-                "model_tag": args.model_tag,
-                "mode": args.mode,
-                "num_layers": cfg.num_layers,
-                "d_model": cfg.d_model,
-                "d_ff": cfg.d_ff,
-                "num_heads": cfg.num_heads,
-                "context_len": cfg.context_len,
-                "batch_size": cfg.batch_size,
-                "vocab_size": cfg.vocab_size,
-                "warm_up": args.warm_up,
-                "nsteps": args.nsteps,
-                "use_bf16": args.use_bf16,
-                "use_torch_compile": args.use_torch_compile,
-                "device": str(device),
-                "dtype": str(dtype),
-                "mean_s": avg_s,
-                "mean_peak_mem": avg_peak_mem,
-                "status": "OK",
-            }
+        record = {
+            "model_tag": args.model_tag,
+            "mode": args.mode,
+            "num_layers": cfg.num_layers,
+            "d_model": cfg.d_model,
+            "d_ff": cfg.d_ff,
+            "num_heads": cfg.num_heads,
+            "context_len": cfg.context_len,
+            "batch_size": cfg.batch_size,
+            "vocab_size": cfg.vocab_size,
+            "warm_up": args.warm_up,
+            "nsteps": args.nsteps,
+            "use_bf16": args.use_bf16,
+            "use_torch_compile": args.use_torch_compile,
+            "device": str(device),
+            "dtype": str(dtype),
+            "mean_s": avg_s,
+            "std_s": std_s,
+            "mean_peak_mem": avg_peak_mem,
+            "status": "OK",
+        }
     except torch.cuda.OutOfMemoryError:
         if device.type == "cuda":
             torch.cuda.empty_cache()
