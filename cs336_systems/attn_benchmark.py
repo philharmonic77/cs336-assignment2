@@ -16,6 +16,7 @@ def run_once(
         context_len: int,
         warm_up: int,
         nsteps: int,
+        use_torch_comile: Bool,
         batch_size: int=8,
         device: str = "cuda"
 ) -> tuple[float, ...]:
@@ -26,8 +27,13 @@ def run_once(
 
     mask = torch.tril(torch.ones(context_len, context_len, device=device, dtype=torch.bool))
 
+    if use_torch_comile:
+        f = torch.compile(scaled_dot_product_attention)
+    else:
+        f = scaled_dot_product_attention
+
     for _ in range(warm_up):
-        out = scaled_dot_product_attention(Q, K, V, mask)
+        out = f(Q, K, V, mask)
         loss = out.sum()
         loss.backward()
         Q.grad = None; K.grad = None; V.grad = None
@@ -43,7 +49,7 @@ def run_once(
 
         forward_start = timer()
 
-        out = scaled_dot_product_attention(Q, K, V, mask)
+        out = f(Q, K, V, mask)
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         forward_end = timer()
@@ -110,6 +116,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--context-len", type=int)
     p.add_argument("--warm-up", type=int)
     p.add_argument("--nsteps", type=int)
+    p.add_argument("--use-torch-compile", action="store_true")
 
     # Output
     p.add_argument("--output", type=str, default="results/attn/attn_benchmark.jsonl")
@@ -134,10 +141,12 @@ def main():
                 args.context_len,
                 args.warm_up,
                 args.nsteps,
+                args.use_torch_compile
             )
         record = {
             "d_model": args.d_model,
             "context_len": args.context_len,  
+            "compiled": bool(args.use_torch_compile),
             "forward_time(s)": forward_time,
             "backward_time(s)": backward_time, 
             "before_backward_mem(M)": before_backward_mem,
@@ -153,6 +162,7 @@ def main():
         record = {
             "d_model": args.d_model,
             "context_len": args.context_len,
+            "compiled": bool(args.use_torch_compile),
             "status": "OOM",
         }  
         print("OOM Error!")      
