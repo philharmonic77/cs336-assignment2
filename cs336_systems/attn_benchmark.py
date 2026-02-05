@@ -159,3 +159,5 @@ def main():
 
     append_jsonl(Path(args.output), record)
 
+if __name__ == "__main__":
+    main()
