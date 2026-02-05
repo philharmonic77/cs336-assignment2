@@ -115,9 +115,10 @@ def run_once(
     use_bf16: bool = False,
     mem_profile: bool = False,
     mem_out: str = "",
+    use_torch_compile: bool = False,
     device: torch.device,
     dtype: torch.dtype,
-) -> tuple[float, float]:
+) -> tuple[float, ...]:
     
     if mem_profile:
         mem_ctx = cuda_memory_profile(True, mem_out)
@@ -127,6 +128,9 @@ def run_once(
     with mem_ctx:
     
         model = _build_model(cfg).to(device=device, dtype=dtype)
+        if use_torch_compile:
+            model.compile()
+
         optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
         if mode == "forward_only":
@@ -167,12 +171,14 @@ def run_once(
         # Measure (timer includes GPU completion)
         # -----------------
         times: list[float] = []
+        peak_mems: list[float] = []
 
         with nvtx.range("measure"):
             for _ in range(nsteps):
                 x, y = _generate_data_batch(cfg, device)
 
                 start = timer()
+                torch.cuda.reset_peak_memory_stats()
 
                 if mode == "forward_only":
                     with nvtx.range("forward"):
@@ -202,10 +208,17 @@ def run_once(
 
                 end = timer()
                 times.append(end - start)
+                peak_mem = torch.cuda.max_memory_allocated()
+                peak_mems.append(peak_mem)
 
-    avg = mean(times)
-    sd = stdev(times) if len(times) > 1 else 0.0
-    return avg, sd
+    avg_time = mean(times)
+    sd_time = stdev(times) if len(times) > 1 else 0.0
+
+    if not use_torch_compile:
+        return avg_time, sd_time
+
+    avg_peak_mem = mean(peak_mems)
+    return avg_time, avg_peak_mem
 
 @nvtx.range("scaled dot product attention")
 def annotated_scaled_dot_product_attention(
@@ -284,6 +297,9 @@ def _parse_args() -> argparse.Namespace:
     # record mem profile or not
     p.add_argument("--mem-profile", action="store_true")
 
+    # use torch compile or not
+    p.add_argument("--use-torch-compile", action="store_true")
+
     return p.parse_args()
 
 
@@ -312,37 +328,72 @@ def main() -> None:
             f"{args.model_tag}_ctx{args.context_len}_{args.mode}"
             f"{'_bf16' if args.use_bf16 else ''}.pickle"
         )
+    if not args.use_torch_compile:
+        avg_s, std_s = run_once(
+            cfg,
+            warm_up=args.warm_up,
+            nsteps=args.nsteps,
+            mode=args.mode,
+            use_bf16=args.use_bf16,
+            mem_profile=args.mem_profile,
+            mem_out=mem_out,
+            use_torch_compile=False,
+            device=device,
+            dtype=dtype,
+        )
 
-    avg_s, std_s = run_once(
-        cfg,
-        warm_up=args.warm_up,
-        nsteps=args.nsteps,
-        mode=args.mode,
-        use_bf16=args.use_bf16,
-        mem_profile=args.mem_profile,
-        mem_out=mem_out,
-        device=device,
-        dtype=dtype,
-    )
+        record = {
+            "model_tag": args.model_tag,
+            "mode": args.mode, 
+            "num_layers": cfg.num_layers,
+            "d_model": cfg.d_model,
+            "d_ff": cfg.d_ff,
+            "num_heads": cfg.num_heads,
+            "context_len": cfg.context_len,
+            "batch_size": cfg.batch_size,
+            "vocab_size": cfg.vocab_size,
+            "warm_up": args.warm_up,
+            "nsteps": args.nsteps,
+            "use_bf16": args.use_bf16,
+            "device": str(device),
+            "dtype": str(dtype),
+            "mean_s": avg_s,
+            "std_s": std_s,
+        }
 
-    record = {
-        "model_tag": args.model_tag,
-        "mode": args.mode, 
-        "num_layers": cfg.num_layers,
-        "d_model": cfg.d_model,
-        "d_ff": cfg.d_ff,
-        "num_heads": cfg.num_heads,
-        "context_len": cfg.context_len,
-        "batch_size": cfg.batch_size,
-        "vocab_size": cfg.vocab_size,
-        "warm_up": args.warm_up,
-        "nsteps": args.nsteps,
-        "use_bf16": args.use_bf16,
-        "device": str(device),
-        "dtype": str(dtype),
-        "mean_s": avg_s,
-        "std_s": std_s,
-    }
+    else:
+        avg_s, avg_peak_mem = run_once(
+            cfg,
+            warm_up=args.warm_up,
+            nsteps=args.nsteps,
+            mode=args.mode,
+            use_bf16=args.use_bf16,
+            mem_profile=args.mem_profile,
+            mem_out=mem_out,
+            use_torch_compile=True,
+            device=device,
+            dtype=dtype,
+        )
+
+        record = {
+            "model_tag": args.model_tag,
+            "mode": args.mode, 
+            "num_layers": cfg.num_layers,
+            "d_model": cfg.d_model,
+            "d_ff": cfg.d_ff,
+            "num_heads": cfg.num_heads,
+            "context_len": cfg.context_len,
+            "batch_size": cfg.batch_size,
+            "vocab_size": cfg.vocab_size,
+            "warm_up": args.warm_up,
+            "nsteps": args.nsteps,
+            "use_bf16": args.use_bf16,
+            "device": str(device),
+            "dtype": str(dtype),
+            "mean_s": avg_s,
+            "mean_peak_mem": avg_peak_mem,
+        }
+
     append_jsonl(Path(args.output), record)
 
     print(json.dumps(record))
