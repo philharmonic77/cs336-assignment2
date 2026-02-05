@@ -289,3 +289,56 @@ The next most frequent large allocations are around 6.3 MiB, which closely match
 For the large model with D=1280, this is $1280^2 \times 4 \approx 6.25 MiB$, corresponding to per-layer linear projection weights in self-attention (e.g. $W_q, W_k, W_v, W_o$), and they appear repeatedly because each Transformer layer contains several such matrices (and their associated buffers).
 
 Here is the script used: [[bash]](scripts/run_mem_profile.sh)
+
+### Problem (pytorch_attention): 2 points
+
+- when context_len = 16384, I got OOM error.
+
+- The smallest configuration that runs out of memory is: context_len = 16384, d_model = 16.
+
+    For B=8 and S=8192, a single $B \times S \times S$ attention tensor in float32 requires about 2 GiB. In naive attention, both the attention logits and softmax-related tensors of this size are retained for backward, resulting in roughly 4 GiB of memory usage before backward, consistent with our measurements. Since attention memory scales as O($BS^2$), increasing the sequence length to S=16384 quadruples this cost, causing the peak memory usage to exceed the 24 GiB capacity of an RTX 4090 and leading to out-of-memory errors.
+
+- The dominant saved tensors are B\times S\times S (attention logits/softmax-related values), so $M_{\text{saved}} = \Theta(BS^2)$. To eliminate this memory cost, we can use FlashAttention / tiled online softmax or activation checkpointing / recomputation.
+
+Here are the time and memory results:
+- d_model = 16
+
+| S | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
+|---|--------------|---------------|------------------|------------|
+| 256 | 0.29 | 0.55 | 20.90 | 29.02 |
+| 1024 | 0.43 | 1.06 | 84.34 | 212.84 |
+| 4096 | 9.81 | 20.71 | 1080.63 | 3130.63 |
+| 8192 | 38.87 | 81.86 | 4257.00 | 12453.00 |
+| 16384 | OOM | OOM | OOM | OOM |
+
+- d_model = 32
+
+| S | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
+|---|--------------|---------------|------------------|------------|
+| 256 | 0.37 | 0.63 | 21.40 | 29.65 |
+| 1024 | 0.41 | 1.04 | 86.34 | 215.34 |
+| 4096 | 9.89 | 20.83 | 1088.63 | 3140.63 |
+| 8192 | 38.99 | 82.09 | 4273.00 | 12473.00 |
+| 16384 | OOM | OOM | OOM | OOM |
+
+- d_model = 64
+
+| S | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
+|---|--------------|---------------|------------------|------------|
+| 256 | 0.30 | 0.54 | 22.40 | 30.90 |
+| 1024 | 0.43 | 1.09 | 90.34 | 220.34 |
+| 4096 | 9.98 | 20.95 | 1104.63 | 3160.63 |
+| 8192 | 39.25 | 82.56 | 4305.00 | 12513.00 |
+| 16384 | OOM | OOM | OOM | OOM |
+
+- d_model = 128
+
+| S | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
+|---|--------------|---------------|------------------|------------|
+| 256 | 0.29 | 0.57 | 24.40 | 33.40 |
+| 1024 | 0.45 | 1.17 | 98.34 | 230.34 |
+| 4096 | 10.40 | 21.47 | 1136.63 | 3200.63 |
+| 8192 | 40.83 | 84.24 | 4369.00 | 12593.00 |
+| 16384 | OOM | OOM | OOM | OOM |
+
+Here is the script used: [[bash]](scripts/run_attn_benchmark.sh)
