@@ -165,4 +165,7 @@ cython_debug/
 .DS_Store
 
 # large nsys local result
-nsys/
+mem/
+nsys-rep/
+stats/
+
