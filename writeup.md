@@ -341,13 +341,13 @@ Here are the time and memory results:
 | 8192 | 40.83 | 84.24 | 4369.00 | 12593.00 |
 | 16384 | OOM | OOM | OOM | OOM |
 
-Here is the script used: [[bash]](scripts/run_attn_benchmark.sh)
+Here is the script used: [[bash]](scripts/run_attn_benchmark.sh), here is the script used to write table: [[python]](utils/make_tables_for_attn_benchmark.py).
 
 ### Problem (torch_compile): 2 points
 (a)
 - d_model = 16
 
-| T | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
+| S | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
 |---|--------------|---------------|------------------|------------|
 | 256 | 0.31 | 0.52 | 20.84 | 24.97 |
 | 1024 | 0.35 | 0.72 | 83.38 | 147.88 |
@@ -357,7 +357,7 @@ Here is the script used: [[bash]](scripts/run_attn_benchmark.sh)
 
 - d_model = 32
 
-| T | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
+| S | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
 |---|--------------|---------------|------------------|------------|
 | 256 | 0.38 | 0.49 | 21.34 | 25.59 |
 | 1024 | 0.36 | 0.75 | 85.38 | 150.38 |
@@ -367,7 +367,7 @@ Here is the script used: [[bash]](scripts/run_attn_benchmark.sh)
 
 - d_model = 64
 
-| T | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
+| S | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
 |---|--------------|---------------|------------------|------------|
 | 256 | 0.25 | 0.37 | 22.34 | 26.84 |
 | 1024 | 0.33 | 0.74 | 89.38 | 155.38 |
@@ -377,7 +377,7 @@ Here is the script used: [[bash]](scripts/run_attn_benchmark.sh)
 
 - d_model = 128
 
-| T | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
+| S | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |
 |---|--------------|---------------|------------------|------------|
 | 256 | 0.34 | 0.51 | 24.34 | 29.34 |
 | 1024 | 0.37 | 0.79 | 97.38 | 165.38 |
@@ -394,3 +394,58 @@ Compared to eager execution, torch.compile significantly reduces both forward an
 | Memory before backward | Peak memory |
 |------------------------|-------------|
 | ![](assets/attn_mem_before.png) | ![](assets/attn_peak_mem.png) |
+
+Here is the script used: [[bash]](scripts/run_attn_benchmark_compile.sh), here is the script used to write table: [[python]](utils/make_tables_for_attn_benchmark.py).
+
+(b) With batch size 4 and BF16 enabled, torch.compile provides up to ~5× speedup for forward-only inference and ~2–3× speedup for end-to-end training (forward + backward + optimizer). Peak memory usage is reduced by ~30–45% in inference and up to ~30% during training, which slightly delays OOM in some borderline cases but does not fundamentally change the OOM limit for large models or long context lengths.
+- mode = forward_only
+
+| model_tag | context_len | eager mean (ms) | compiled mean (ms) | speedup | eager peak (MiB) | compiled peak (MiB) | mem saving |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| small | 128 | 18.85 | 3.81 | 4.94x | 773.9 | 525.4 | 32.11% |
+| small | 256 | 18.05 | 4.32 | 4.18x | 785.8 | 541.8 | 31.05% |
+| small | 512 | 18.84 | 6.52 | 2.89x | 896.3 | 590.8 | 34.08% |
+| small | 1024 | 53.72 | 15.44 | 3.48x | 1350.6 | 723.0 | 46.47% |
+| medium | 128 | 34.99 | 7.58 | 4.62x | 2425.1 | 1656.4 | 31.70% |
+| medium | 256 | 35.45 | 10.00 | 3.55x | 2438.4 | 1672.4 | 31.41% |
+| medium | 512 | 47.45 | 18.47 | 2.57x | 2586.8 | 1746.5 | 32.49% |
+| medium | 1024 | 143.12 | 44.60 | 3.21x | 3191.7 | 1914.6 | 40.01% |
+| large | 128 | 60.47 | 17.28 | 3.50x | 5652.1 | 3857.3 | 31.75% |
+| large | 256 | 57.02 | 23.19 | 2.46x | 5673.0 | 3879.8 | 31.61% |
+| large | 512 | 94.39 | 42.54 | 2.22x | 5854.0 | 3969.9 | 32.18% |
+| large | 1024 | 273.17 | 95.90 | 2.85x | 6606.2 | 4190.0 | 36.57% |
+| xl | 128 | 80.79 | 29.83 | 2.71x | 11697.6 | 7871.6 | 32.71% |
+| xl | 256 | 93.77 | 47.56 | 1.97x | 11660.5 | 7899.7 | 32.25% |
+| xl | 512 | 172.55 | 84.70 | 2.04x | 11857.6 | 8012.3 | 32.43% |
+| xl | 1024 | 478.69 | 183.88 | 2.60x | 12826.0 | 8287.4 | 35.39% |
+| 2.7B | 128 | 73.29 | 46.83 | 1.56x | 19599.1 | 13249.3 | 32.40% |
+| 2.7B | 256 | 95.91 | 71.16 | 1.35x | 19647.8 | 13311.3 | 32.25% |
+| 2.7B | 512 | 202.54 | 126.22 | 1.60x | 19824.8 | 13459.4 | 32.11% |
+| 2.7B | 1024 | 520.22 | 253.05 | 2.06x | 21048.9 | 13851.6 | 34.19% |
+
+- mode = train_step
+
+| model_tag | context_len | eager mean (ms) | compiled mean (ms) | speedup | eager peak (MiB) | compiled peak (MiB) | mem saving |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| small | 128 | 111.51 | 55.25 | 2.02x | 2235.9 | 2079.5 | 7.00% |
+| small | 256 | 111.07 | 45.99 | 2.42x | 2803.7 | 2432.4 | 13.24% |
+| small | 512 | 112.69 | 39.68 | 2.84x | 4224.6 | 3374.3 | 20.13% |
+| small | 1024 | 170.71 | 61.94 | 2.76x | 8727.0 | 6142.1 | 29.62% |
+| medium | 128 | 182.48 | 78.55 | 2.32x | 6764.3 | 6534.4 | 3.40% |
+| medium | 256 | 192.23 | 92.59 | 2.08x | 8144.0 | 7223.0 | 11.31% |
+| medium | 512 | 188.30 | 84.92 | 2.22x | 11803.3 | 9556.3 | 19.04% |
+| medium | 1024 | 463.68 | 171.74 | 2.70x | 23100.6 | 16534.3 | 28.42% |
+| large | 128 | 248.26 | 117.40 | 2.11x | 15378.7 | 15277.9 | 0.66% |
+| large | 256 | 266.03 | 128.23 | 2.07x | 17883.7 | 16145.4 | 9.72% |
+| large | 512 | OOM | 188.21 | - | OOM | 20368.7 | - |
+| large | 1024 | OOM | OOM | - | OOM | OOM | - |
+| xl | 128 | OOM | OOM | - | OOM | OOM | - |
+| xl | 256 | OOM | OOM | - | OOM | OOM | - |
+| xl | 512 | OOM | OOM | - | OOM | OOM | - |
+| xl | 1024 | OOM | OOM | - | OOM | OOM | - |
+| 2.7B | 128 | OOM | OOM | - | OOM | OOM | - |
+| 2.7B | 256 | OOM | OOM | - | OOM | OOM | - |
+| 2.7B | 512 | OOM | OOM | - | OOM | OOM | - |
+| 2.7B | 1024 | OOM | OOM | - | OOM | OOM | - |
+
+Here is the script used to calculate: [[bash]](scripts/run_nsys_profile_compile.sh), here is the script used to write table: [[python]](utils/make_tables_for_model_benchmark.py).

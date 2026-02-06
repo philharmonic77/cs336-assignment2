@@ -12,7 +12,7 @@ with open(INPUT) as f:
 
 for d in D_MODELS:
     print(f"\n- d_model = {d}\n")
-    print("| T | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |")
+    print("| S | forward (ms) | backward (ms) | mem before (MiB) | peak (MiB) |")
     print("|---|--------------|---------------|------------------|------------|")
     for t in SEQ_LENS:
         r = data.get((d, t))
