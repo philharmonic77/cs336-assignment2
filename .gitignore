@@ -168,5 +168,3 @@ cython_debug/
 mem/
 nsys-rep/
 stats/
-
-cs336_systems/triton/weighted_sum_example.py
