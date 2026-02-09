@@ -1,7 +1,7 @@
 import torch
 import math
 
-class WeightedSumFunc(torch.autograd.Function):
+class FlashAttentionFunc(torch.autograd.Function):
     @staticmethod
     def forward(ctx, Q, K, V, is_causal=False):
         # handle is_causal
