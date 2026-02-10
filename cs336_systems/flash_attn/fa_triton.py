@@ -2,7 +2,7 @@ from typing import Any
 import torch
 import triton # type: ignore
 import triton.language as tl # type: ignore
-from triton.cdiv import cdiv # type: ignore
+from triton import cdiv # type: ignore
 import math
 
 
