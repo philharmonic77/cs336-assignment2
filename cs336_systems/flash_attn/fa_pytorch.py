@@ -47,7 +47,7 @@ class FlashAttentionPytorchFunc(torch.autograd.Function):
                 if is_causal:
                     k_idx = torch.arange(ks, ke, device=Q.device) # (bk,)
                     mask = q_idx.unsqueeze(-1) >= k_idx.unsqueeze(0) # (bq, bk)
-                    S = S + (~mask)[None, :, :] * (-1e6)
+                    S = torch.where(mask, S, S + (-1e6))
 
                 m_i_new = torch.maximum(m_i, S_i.max(dim=-1).values) # (B, bq)
                 P_i= torch.exp(S_i - m_i_new.unsqueeze(-1)) # (B, bq, bk)

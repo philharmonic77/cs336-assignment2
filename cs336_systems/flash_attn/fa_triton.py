@@ -78,14 +78,14 @@ def flash_attention_fwd(
     Q = tl.load(Q_block_ptr, boundary_check=(0, 1), padding_option="zero")  # (Q_TILE_SIZE, D)
     q_idx = query_tile_index * Q_TILE_SIZE + tl.arange(0, Q_TILE_SIZE)  # (Q_TILE_SIZE,)
 
-    for _ in range(tl.cdiv(N_KEYS, K_TILE_SIZE)):
+    for i in range(tl.cdiv(N_KEYS, K_TILE_SIZE)):
         K = tl.load(K_block_ptr, boundary_check=(0, 1), padding_option="zero") # (K_TILE_SIZE, D)
         V = tl.load(V_block_ptr, boundary_check=(0, 1), padding_option="zero") # (K_TILE_SIZE, D)
 
         S = tl.dot(Q, tl.trans(K)) * scale # (Q_TILE_SIZE, K_TILE_SIZE)
 
         if is_causal:
-            k_start = K_block_ptr.offsets[0]
+            k_start = i * K_TILE_SIZE
             k_idx = k_start + tl.arange(0, K_TILE_SIZE)                 # (K_TILE_SIZE,)
 
             mask = q_idx[:, None] >= k_idx[None, :]                     # (Q_TILE_SIZE, K_TILE_SIZE)
