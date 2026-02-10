@@ -4,6 +4,7 @@ import math
 class FlashAttentionPytorchFunc(torch.autograd.Function):
     @staticmethod
     def forward(ctx, Q, K, V, is_causal=False):
+        ctx.is_causal = is_causal
         # flatten
         *batch_dims, Nq, d = Q.shape
         *batch_dims_k, Nk, dk = K.shape
@@ -44,7 +45,7 @@ class FlashAttentionPytorchFunc(torch.autograd.Function):
                 # calc attn / online softmax
                 S_i = torch.matmul(Q_i, K_j.transpose(-1, -2)) * scale # (B, bq, bk)
 
-                if is_causal:
+                if ctx.is_causal:
                     k_idx = torch.arange(ks, ke, device=Q.device) # (bk,)
                     mask = q_idx.unsqueeze(-1) >= k_idx.unsqueeze(0) # (bq, bk)
                     S = torch.where(mask, S, S + (-1e6))
