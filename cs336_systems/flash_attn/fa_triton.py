@@ -19,7 +19,8 @@ def flash_attention_fwd(
     scale,
     D: tl.constexpr,
     Q_TILE_SIZE: tl.constexpr,
-    K_TILE_SIZE:  tl.constexpr
+    K_TILE_SIZE:  tl.constexpr,
+    is_causal: tl.constexpr
 ):
     query_tile_index = tl.program_id(0)
     batch_index = tl.program_id(1)
@@ -75,12 +76,21 @@ def flash_attention_fwd(
     l = tl.zeros((Q_TILE_SIZE,), tl.float32)
 
     Q = tl.load(Q_block_ptr, boundary_check=(0, 1), padding_option="zero")  # (Q_TILE_SIZE, D)
+    q_idx = query_tile_index * Q_TILE_SIZE + tl.arange(0, Q_TILE_SIZE)  # (Q_TILE_SIZE,)
 
     for _ in range(tl.cdiv(N_KEYS, K_TILE_SIZE)):
         K = tl.load(K_block_ptr, boundary_check=(0, 1), padding_option="zero") # (K_TILE_SIZE, D)
         V = tl.load(V_block_ptr, boundary_check=(0, 1), padding_option="zero") # (K_TILE_SIZE, D)
 
         S = tl.dot(Q, tl.trans(K)) * scale # (Q_TILE_SIZE, K_TILE_SIZE)
+
+        if is_causal:
+            k_start = K_block_ptr.offsets[0]
+            k_idx = k_start + tl.arange(0, K_TILE_SIZE)                 # (K_TILE_SIZE,)
+
+            mask = q_idx[:, None] >= k_idx[None, :]                     # (Q_TILE_SIZE, K_TILE_SIZE)
+            S = tl.where(mask, S, S + (-1e6))
+        
         m_new = tl.maximum(m, tl.max(S, axis=1)) # (Q_TILE_SIZE, ）
 
         P = tl.exp(S - m_new[:, None]) # (Q_TILE_SIZE, K_TILE_SIZE)
@@ -106,9 +116,7 @@ def flash_attention_fwd(
 class FlashAttentionTritonFunc(torch.autograd.Function):
     @staticmethod
     def forward(ctx, Q, K, V, is_causal=False):
-        # handle is_causal
-        if is_causal:
-            pass
+        ctx.is_causal = is_causal
 
         # flatten
         *batch_dims, Nq, d = Q.shape
@@ -145,6 +153,7 @@ class FlashAttentionTritonFunc(torch.autograd.Function):
                 D=d,
                 Q_TILE_SIZE=ctx.Bq,
                 K_TILE_SIZE=ctx.Bk,
+                is_causal=ctx.is_causal
         )
 
         ctx.save_for_backward(Q, K, V, O, L)

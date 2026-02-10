@@ -4,10 +4,6 @@ import math
 class FlashAttentionPytorchFunc(torch.autograd.Function):
     @staticmethod
     def forward(ctx, Q, K, V, is_causal=False):
-        # handle is_causal
-        if is_causal:
-            pass
-        
         # flatten
         *batch_dims, Nq, d = Q.shape
         *batch_dims_k, Nk, dk = K.shape
@@ -38,6 +34,8 @@ class FlashAttentionPytorchFunc(torch.autograd.Function):
             l_i = torch.zeros(B, bq, device=Q.device, dtype=Q.dtype)
             m_i = torch.empty(B, bq, device=Q.device, dtype=Q.dtype).fill_(float('-inf'))
 
+            q_idx = torch.arange(qs, qe, device=Q.device)              # (bq,)
+
             for j in range(0, Nk, Bk):
                 ks, ke = j, min(j + Bk, Nk)
                 K_j = K[:, ks: ke, :] # (B, bk, d)
@@ -45,6 +43,12 @@ class FlashAttentionPytorchFunc(torch.autograd.Function):
 
                 # calc attn / online softmax
                 S_i = torch.matmul(Q_i, K_j.transpose(-1, -2)) * scale # (B, bq, bk)
+
+                if is_causal:
+                    k_idx = torch.arange(ks, ke, device=Q.device) # (bk,)
+                    mask = q_idx.unsqueeze(-1) >= k_idx.unsqueeze(0) # (bq, bk)
+                    S = S + (~mask)[None, :, :] * (-1e6)
+
                 m_i_new = torch.maximum(m_i, S_i.max(dim=-1).values) # (B, bq)
                 P_i= torch.exp(S_i - m_i_new.unsqueeze(-1)) # (B, bq, bk)
                 factor = torch.exp(m_i - m_i_new) # (B, bq)
