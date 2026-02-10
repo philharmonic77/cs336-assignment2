@@ -1,6 +1,6 @@
-import triton
-import triton.language as tl # pyright: ignore[reportMissingImports]
-from triton.cdiv import cdiv # pyright: ignore[reportMissingImports]
+import triton # type: ignore
+import triton.language as tl # type: ignore
+from triton.cdiv import cdiv # type: ignore
 import torch
 from einops import rearrange
 
@@ -215,7 +215,7 @@ class WeightedSumFunc(torch.autograd.Function):
 
         # Launch our kernel with n instances in our 1D grid.
         n_rows = y.numel()
-        weighted_sum_fwd[(cdiv(n_rows, ctx.ROWS_TILE_SIZE),)](
+        weighted_sum_fwd[(cdiv(n_rows, ctx.ROWS_TILE_SIZE),)]( # type: ignore
             x,
             weight,
             y,
@@ -246,7 +246,7 @@ class WeightedSumFunc(torch.autograd.Function):
         )
         grad_x = torch.empty_like(x)
 
-        weighted_sum_backward[(cdiv(n_rows, ROWS_TILE_SIZE),)](
+        weighted_sum_backward[(cdiv(n_rows, ROWS_TILE_SIZE),)]( # type: ignore
             x,
             weight,
             grad_out,
@@ -266,5 +266,5 @@ class WeightedSumFunc(torch.autograd.Function):
             D_TILE_SIZE=D_TILE_SIZE,
         )
 
-        grad_weight = partial_grad_weight.sum(axis=0)
+        grad_weight = partial_grad_weight.sum(axis=0) # type: ignore
         return grad_x, grad_weight

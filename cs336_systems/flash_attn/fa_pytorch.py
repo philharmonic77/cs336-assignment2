@@ -27,7 +27,7 @@ class FlashAttentionPytorchFunc(torch.autograd.Function):
         Bq, Bk = 64, 64
         scale = 1.0 / math.sqrt(d)
         O = torch.empty(B, Nq, dv, device=Q.device, dtype=Q.dtype)
-        L = torch.empty(B, Nq, device=Q.device, dtype=Q.dtype)
+        L = torch.empty(B, Nq, device=Q.device, dtype=torch.float32)
         
         for i in range(0, Nq, Bq):
             qs, qe = i, min(i + Bq, Nq)
