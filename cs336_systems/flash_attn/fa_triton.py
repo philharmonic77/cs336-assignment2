@@ -161,5 +161,54 @@ class FlashAttentionTritonFunc(torch.autograd.Function):
         return O.reshape(*batch_dims, Nq, d)
 
     @staticmethod
-    def backward(ctx: Any, *grad_outputs: Any):
-        raise NotImplementedError
+    @torch.compile
+    def backward(ctx, dO):
+        Q, K, V, O, L = ctx.saved_tensors
+        is_causal = ctx.is_causal
+
+        # Q,K,V,O: (B, N, d)
+        B, N, d = Q.shape
+        scale = 1.0 / math.sqrt(d)
+
+        # ---- recompute S ----
+        # (B, N, N)
+        S = torch.matmul(Q, K.transpose(-1, -2)) * scale
+
+        if is_causal:
+            idx = torch.arange(N, device=Q.device)
+            mask = idx[:, None] >= idx[None, :]
+            S = torch.where(mask, S, S + (-1e6))
+
+        # ---- recompute P ----
+        # L: (B, N)
+        P = torch.exp(S - L.unsqueeze(-1))   # (B, N, N)   
+
+        # ---- dV ----
+        # (B, d, N) @ (B, N, d) -> (B, N, d)
+        dV = torch.matmul(P.transpose(-1, -2), dO)
+
+        # ---- dP ----
+        dP = torch.matmul(dO, V.transpose(-1, -2))  # (B, N, N)
+
+        # ---- D vector ----
+        # (B, N)
+        D = torch.sum(dO * O, dim=-1)
+
+        # ---- dS ----
+        dS = P * (dP - D.unsqueeze(-1))
+
+        if is_causal:
+            dS = dS * mask[None, :, :]
+
+        # ---- dQ, dK ----
+        dQ = torch.matmul(dS, K) * scale
+        dK = torch.matmul(dS.transpose(-1, -2), Q) * scale
+
+        # reshape back
+        dQ = dQ.reshape(*ctx.batch_dims, N, d)
+        dK = dK.reshape(*ctx.batch_dims, N, d)
+        dV = dV.reshape(*ctx.batch_dims, N, d)
+
+        return dQ, dK, dV, None
+    
+            
