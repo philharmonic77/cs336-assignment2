@@ -497,3 +497,6 @@ As world size increases, NCCL shows significantly better scalability compared to
 Because more processes must synchronize and share communication bandwidth, leading to higher collective overhead.
 #### Conclusion 3: Large tensors are bandwidth-bound, small tensors are latency-bound
 For small tensor sizes (e.g., 1MB), runtime is dominated by communication latency and synchronization overhead. As tensor size increases (100MB–1GB), runtime grows approximately linearly with data size, indicating a bandwidth-bound regime where throughput is limited by the underlying interconnect bandwidth.
+
+### Problem (naive_ddp): 5 points
+code file: [[python]](cs336_systems/ddp/naive_ddp.py)
