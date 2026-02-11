@@ -449,3 +449,51 @@ Here is the script used: [[bash]](scripts/run_attn_benchmark_compile.sh), here i
 | 2.7B | 1024 | OOM | OOM | - | OOM | OOM | - |
 
 Here is the script used to calculate: [[bash]](scripts/run_nsys_profile_compile.sh), here is the script used to write table: [[python]](utils/make_tables_for_model_benchmark.py).
+
+### Problem (flash_forward): 15 points / Problem (flash_backward): 5 points
+Code files are put at this [folder](cs336_systems/flash_attn/).
+
+### Problem (flash_benchmarking): 5 points
+Temp pass
+
+### Problem (distributed_communication_single_node): 5 points
+code file: [[python]](cs336_systems/ddp/all_reduce_benchmark.py)
+
+All NCCL experiments were conducted on a Linux machine equipped with NVIDIA GeForce RTX 4090 GPUs. The GPUs are interconnected via PCIe (no NVLink support on RTX 4090), and communication was performed using the NCCL backend.
+
+Reported results use the maximum latency across ranks to reflect the true distributed synchronization cost.
+
+- world size = 2
+
+| Size   | NCCL Time (s) | NCCL Bandwidth (GB/s) | Gloo Time (s) | Gloo Bandwidth (GB/s) | Speedup (NCCL/Gloo) |
+|--------|---------------|------------------------|---------------|------------------------|---------------------|
+| 1MB    | 0.000095      | 10.28                  | 0.001189      | 0.82                   | 12.5×               |
+| 10MB   | 0.000731      | 13.36                  | 0.002751      | 3.55                   | 3.8×                |
+| 100MB  | 0.006958      | 14.03                  | 0.032741      | 2.98                   | 4.7×                |
+| 1024MB | 0.069285      | 14.43                  | 0.329153      | 3.11                   | 4.7×                |
+- world size = 4
+
+| Size   | NCCL Time (s) | NCCL Bandwidth (GB/s) | Gloo Time (s) | Gloo Bandwidth (GB/s) | Speedup (NCCL/Gloo) |
+|--------|---------------|------------------------|---------------|------------------------|---------------------|
+| 1MB    | 0.000138      | 7.08                   | 0.001727      | 0.57                   | 12.5×               |
+| 10MB   | 0.000976      | 10.00                  | 0.006178      | 1.58                   | 6.3×                |
+| 100MB  | 0.009584      | 10.19                  | 0.060768      | 1.61                   | 6.3×                |
+| 1024MB | 0.096291      | 10.39                  | 0.620225      | 1.65                   | 6.4×                |
+- world size = 6
+
+| Size   | NCCL Time (s) | NCCL Bandwidth (GB/s) | Gloo Time (s) | Gloo Bandwidth (GB/s) | Speedup (NCCL/Gloo) |
+|--------|---------------|------------------------|---------------|------------------------|---------------------|
+| 1MB    | 0.000199      | 4.91                   | 0.002361      | 0.42                   | 11.9×               |
+| 10MB   | 0.001063      | 9.19                   | 0.009966      | 0.98                   | 9.4×                |
+| 100MB  | 0.010116      | 9.66                   | 0.096754      | 1.01                   | 9.6×                |
+| 1024MB | 0.101996      | 9.80                   | 0.993966      | 1.01                   | 9.8×                |
+
+
+#### Conclusion 1: NCCL (GPU) is significantly faster than Gloo (CPU) and demonstrates better scalability
+NCCL is significantly faster than Gloo because it uses direct GPU peer-to-peer communication over PCIe, while Gloo relies on CPU-based TCP communication with substantially higher overhead.
+
+As world size increases, NCCL shows significantly better scalability compared to Gloo. While Gloo runtime grows nearly linearly with the number of processes due to TCP and CPU overhead, NCCL maintains relatively stable effective bandwidth because of its optimized ring-based collective algorithm and GPU peer-to-peer communication.
+#### Conclusion 2: Increasing world size leads to higher runtime
+Because more processes must synchronize and share communication bandwidth, leading to higher collective overhead.
+#### Conclusion 3: Large tensors are bandwidth-bound, small tensors are latency-bound
+For small tensor sizes (e.g., 1MB), runtime is dominated by communication latency and synchronization overhead. As tensor size increases (100MB–1GB), runtime grows approximately linearly with data size, indicating a bandwidth-bound regime where throughput is limited by the underlying interconnect bandwidth.
