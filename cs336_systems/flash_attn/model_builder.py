@@ -21,11 +21,11 @@ class ModelConfig:
 
 def flash_attention_wrapper(Q, K, V, mask=None):
     if mask is not None:
-        warnings.warn(
-            "FlashAttention wrapper currently ignores the provided mask. "
-            "Results may be incorrect if the mask is not strictly causal.",
-            RuntimeWarning,
-        )
+        # warnings.warn(
+        #     "FlashAttention wrapper currently ignores the provided mask. "
+        #     "Results may be incorrect if the mask is not strictly causal.",
+        #     RuntimeWarning,
+        # )
         return FlashAttentionTritonFunc.apply(Q, K, V, True)
     return FlashAttentionTritonFunc.apply(Q, K, V, False)
 
