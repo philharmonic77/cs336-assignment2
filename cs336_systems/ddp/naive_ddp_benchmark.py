@@ -151,8 +151,10 @@ def generate_and_scatter_data(rank, world_size, cfg, device, generator):
     if rank == 0:
         global_x, global_y = generate_data_batch(cfg, device, generator)
 
-        x_chunks = list(global_x.chunk(world_size, dim=0))
-        y_chunks = list(global_y.chunk(world_size, dim=0))
+        # x_chunks = list(global_x.chunk(world_size, dim=0))
+        # y_chunks = list(global_y.chunk(world_size, dim=0))
+        x_chunks = [c.contiguous() for c in global_x.chunk(world_size, dim=0)]
+        y_chunks = [c.contiguous() for c in global_y.chunk(world_size, dim=0)]
     else:
         x_chunks = None
         y_chunks = None
