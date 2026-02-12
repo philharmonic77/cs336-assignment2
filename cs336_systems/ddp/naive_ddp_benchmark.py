@@ -181,14 +181,15 @@ def init_model_and_broadcast(model, rank, src):
 def train_step(model, optimizer, x, y, device, world_size=None):
     start_total = timer()
 
-    with torch.autocast(
-        device_type=device.type,
-        dtype=torch.bfloat16 if device.type == "cuda" else torch.float32,
-        enabled=(device.type == "cuda"),
-    ):
-        logits = model(x)
-        loss = cross_entropy(logits, y)
-    
+    # with torch.autocast(
+    #     device_type=device.type,
+    #     dtype=torch.bfloat16 if device.type == "cuda" else torch.float32,
+    #     enabled=(device.type == "cuda"),
+    # ):
+    #     logits = model(x)
+    #     loss = cross_entropy(logits, y)
+    logits = model(x)
+    loss = cross_entropy(logits, y)    
     loss.backward()
     torch.cuda.synchronize() if device.type == "cuda" else None
 
