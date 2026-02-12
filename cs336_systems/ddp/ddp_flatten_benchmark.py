@@ -44,7 +44,7 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
         _ = train_step(model, optimizer, x, y, device, world_size)
 
     # ---- measure ----
-    pack_time_acctotal_time_acc = 0.0
+    total_time_acc = 0.0
     comm_time_acc = 0.0
     pack_time_acc = 0.0
     allreduce_time_acc = 0.0
