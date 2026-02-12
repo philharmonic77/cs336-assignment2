@@ -177,34 +177,37 @@ def train_step(model, optimizer, x, y, device, world_size=None):
 
     
 def compare_models(m1, m2, atol=1e-4, rtol=1e-4):
-    m1 = m1.to("cpu").float()
-    m2 = m2.to("cpu").float()
+    m1 = (m1._orig_mod if hasattr(m1, "_orig_mod") else m1).to("cpu").float()
+    m2 = (m2._orig_mod if hasattr(m2, "_orig_mod") else m2).to("cpu").float()
 
+    sd1 = m1.state_dict()
+    sd2 = m2.state_dict()
+
+    if sd1.keys() != sd2.keys():
+        print("State dict keys mismatch.")
+        return False
+
+    worst = 0.0
     worst_name = None
-    worst_max_diff = 0.0
-    num_mismatch = 0
-    total_params = 0
+    mismatched = 0
 
-    for (n1, p1), (n2, p2) in zip(m1.named_parameters(), m2.named_parameters()):
-        assert n1 == n2
-        total_params += 1
+    for k in sd1:
+        t1, t2 = sd1[k], sd2[k]
+        if not torch.is_floating_point(t1):
+            continue
+        diff = (t1 - t2).abs().max().item()
+        if diff > worst:
+            worst = diff
+            worst_name = k
+        if not torch.allclose(t1, t2, atol=atol, rtol=rtol):
+            mismatched += 1
 
-        max_diff = (p1 - p2).abs().max().item()
-        if max_diff > worst_max_diff:
-            worst_max_diff = max_diff
-            worst_name = n1
-
-        if not torch.allclose(p1, p2, atol=atol, rtol=rtol):
-            num_mismatch += 1
-
-    if num_mismatch == 0:
-        print(f"Models match (atol={atol}, rtol={rtol}) across {total_params} tensors. "
-              f"Worst max diff={worst_max_diff:.6g} at {worst_name}.")
+    if mismatched == 0:
+        print(f"Models match. Worst max diff={worst:.6g} at {worst_name}.")
         return True
 
-    print(f"Models NOT match (atol={atol}, rtol={rtol}). "
-          f"Mismatched tensors: {num_mismatch}/{total_params}. "
-          f"Worst max diff={worst_max_diff:.6g} at {worst_name}.")
+    print(f"Models NOT match. Mismatched {mismatched} tensors. "
+          f"Worst max diff={worst:.6g} at {worst_name}.")
     return False
     
 
