@@ -257,16 +257,14 @@ def main():
         backend = "gloo"
     
     cfg = ModelConfig()
-    warmup = 5
-    nsteps = 10
+    warmup = 0
+    nsteps = 1
     seed = 123
 
     print("Single GPU + flash:")
-    torch.manual_seed(seed)
     model_use_flash = run_single(backend, cfg, use_flash=True, warmup=warmup, nsteps=nsteps, seed=seed)
 
     print("Single GPU + no flash:")
-    torch.manual_seed(seed)
     model_no_flash = run_single(backend, cfg, use_flash=False, warmup=warmup, nsteps=nsteps, seed=seed)
 
     print("Comparing: single_flash vs single_no_flash")
@@ -275,8 +273,7 @@ def main():
     print("Multi GPU + flash:")
     del model_no_flash
     torch.cuda.empty_cache()
-    
-    torch.manual_seed(seed)
+
     mp.spawn(
         fn=run_naive_ddp,
         args=(world_size, backend, cfg, True, warmup, nsteps, seed),
