@@ -14,7 +14,7 @@ class ModelConfig:
     d_ff: int = 5120
     num_layers: int = 36
     num_heads: int = 20
-    context_len: int = 256
+    context_len: int = 512
     vocab_size: int = 10000
     batch_size: int = 4
     lr: float = 3e-4
