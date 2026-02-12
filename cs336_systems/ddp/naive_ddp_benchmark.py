@@ -119,7 +119,7 @@ def generate_and_scatter_data(rank, world_size, cfg, device, generator):
         y_chunks = None
 
     x = torch.empty(cfg.batch_size // world_size, cfg.context_len, dtype=torch.long, device=device)
-    y = torch.empty(cfg.batch_size // world_size, dtype=torch.long, device=device)
+    y = torch.empty(cfg.batch_size // world_size, cfg.context_len, dtype=torch.long, device=device)
     dist.scatter(x, x_chunks, src=0)
     dist.scatter(y, y_chunks, src=0)
 
@@ -180,19 +180,32 @@ def compare_models(m1, m2, atol=1e-4, rtol=1e-4):
     m1 = m1.to("cpu").float()
     m2 = m2.to("cpu").float()
 
-    for (n1, p1), (n2, p2) in zip(
-        m1.named_parameters(),
-        m2.named_parameters(),
-    ):
+    worst_name = None
+    worst_max_diff = 0.0
+    num_mismatch = 0
+    total_params = 0
+
+    for (n1, p1), (n2, p2) in zip(m1.named_parameters(), m2.named_parameters()):
         assert n1 == n2
+        total_params += 1
+
+        max_diff = (p1 - p2).abs().max().item()
+        if max_diff > worst_max_diff:
+            worst_max_diff = max_diff
+            worst_name = n1
 
         if not torch.allclose(p1, p2, atol=atol, rtol=rtol):
-            max_diff = (p1 - p2).abs().max().item()
-            print(f"Mismatch in {n1}, max diff = {max_diff}")
-            return False
+            num_mismatch += 1
 
-    print("Models match!")
-    return True
+    if num_mismatch == 0:
+        print(f"Models match (atol={atol}, rtol={rtol}) across {total_params} tensors. "
+              f"Worst max diff={worst_max_diff:.6g} at {worst_name}.")
+        return True
+
+    print(f"Models NOT match (atol={atol}, rtol={rtol}). "
+          f"Mismatched tensors: {num_mismatch}/{total_params}. "
+          f"Worst max diff={worst_max_diff:.6g} at {worst_name}.")
+    return False
     
 
 def main():
@@ -222,7 +235,7 @@ def main():
     del model_use_flash
     del model_no_flash
     torch.cuda.empty_cache()
-    
+
     mp.spawn(
         fn=run_naive_ddp,
         args=(world_size, backend, cfg, True, warmup, nsteps, seed),
