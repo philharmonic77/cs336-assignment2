@@ -269,14 +269,14 @@ def main():
     print("Single GPU + flash:")
     model_use_flash = run_single(backend, cfg, use_flash=True, warmup=warmup, nsteps=nsteps, seed=seed)
 
-    print("Single GPU + no flash:")
-    model_no_flash = run_single(backend, cfg, use_flash=False, warmup=warmup, nsteps=nsteps, seed=seed)
+    # print("Single GPU + no flash:")
+    # model_no_flash = run_single(backend, cfg, use_flash=False, warmup=warmup, nsteps=nsteps, seed=seed)
 
-    print("Comparing: single_flash vs single_no_flash")
-    compare_models(model_use_flash, model_no_flash)
+    # print("Comparing: single_flash vs single_no_flash")
+    # compare_models(model_use_flash, model_no_flash)
 
     print("Multi GPU + flash:")
-    del model_no_flash
+    # del model_no_flash
     torch.cuda.empty_cache()
 
     mp.spawn(
