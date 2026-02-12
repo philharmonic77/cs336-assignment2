@@ -37,7 +37,7 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
     for _ in range(warmup):
 
         x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
-        _ = train_step(model, optimizer, x, y, device, world_size, log_loss=False)
+        _ = train_step(model, optimizer, x, y, device, world_size)
 
     # ---- measure ----
     total_time_acc = 0.0
