@@ -257,8 +257,8 @@ def main():
         backend = "gloo"
     
     cfg = ModelConfig()
-    warmup = 0
-    nsteps = 1
+    warmup = 5
+    nsteps = 10
     seed = 123
 
     print("Single GPU + flash:")
