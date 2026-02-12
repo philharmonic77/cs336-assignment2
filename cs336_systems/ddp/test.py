@@ -169,11 +169,15 @@ def generate_and_scatter_data(rank, world_size, cfg, device, generator):
     if rank == 0:
         global_x, global_y = generate_data_batch(cfg, device, generator)
 
-        # 打印 global batch fingerprint
-        fingerprint_batch(global_x, global_y, "DDP_GLOBAL")
+        x_chunks = [c.contiguous() for c in global_x.chunk(world_size, dim=0)]
+        y_chunks = [c.contiguous() for c in global_y.chunk(world_size, dim=0)]
 
-        x_chunks = list(global_x.chunk(world_size, dim=0))
-        y_chunks = list(global_y.chunk(world_size, dim=0))
+        # 先在 rank0 本地验证：global == sum(chunks)
+        gx = global_x.sum().item()
+        cx = sum(c.sum().item() for c in x_chunks)
+        gy = global_y.sum().item()
+        cy = sum(c.sum().item() for c in y_chunks)
+        print(f"[CHK pre-scatter] gx={gx} cx={cx} | gy={gy} cy={cy}")
     else:
         x_chunks = None
         y_chunks = None
@@ -183,8 +187,22 @@ def generate_and_scatter_data(rank, world_size, cfg, device, generator):
     dist.scatter(x, x_chunks, src=0)
     dist.scatter(y, y_chunks, src=0)
 
-    # 每个 rank 打印自己的 local chunk
-    fingerprint_batch(x, y, f"DDP_RANK{rank}")
+    # 每个 rank 的局部 sum
+    local_x_sum = x.sum()
+    local_y_sum = y.sum()
+
+    # 汇总到全局
+    tot_x_sum = local_x_sum.clone()
+    tot_y_sum = local_y_sum.clone()
+    dist.all_reduce(tot_x_sum, op=dist.ReduceOp.SUM)
+    dist.all_reduce(tot_y_sum, op=dist.ReduceOp.SUM)
+
+    if rank == 0:
+        # rank0 这时还拿得到 global_x/global_y（在上面 if rank==0 里）
+        print(f"[CHK post-scatter] global_x_sum={global_x.sum().item()} "
+            f"sum(local_x)={tot_x_sum.item()}")
+        print(f"[CHK post-scatter] global_y_sum={global_y.sum().item()} "
+            f"sum(local_y)={tot_y_sum.item()}")
 
     return x, y
 
