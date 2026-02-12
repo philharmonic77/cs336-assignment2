@@ -527,7 +527,6 @@ code file: [[python]](cs336_systems/ddp/naive_ddp_benchmark.py)
 | Multi + Flash  | 0.5739    | 0.3343   | 0.2396      | 58.3%      | 9.342881   | 15.15          | 4.67e-4          |
 
 
-
 #### Conclusion
 
 - Over **half (58%)** of DDP step time is spent in gradient synchronization. Pure compute under DDP (0.2396s) is faster than single GPU (0.4438s).
@@ -535,6 +534,7 @@ code file: [[python]](cs336_systems/ddp/naive_ddp_benchmark.py)
 - Final loss values are nearly identical. Parameter differences are very small (max diff ≈ 4.7e-4), indicating numerical—not logical—divergence. Mismatched 14 tensors out of 300+ in total.
 
 ### Problem (minimal_ddp_flat_benchmarking): 2 points
+code file: [[python]](cs336_systems/ddp/ddp_flatten_benchmark.py)
 
 | Setting | Total (s) | Comm (s) | Compute (s) | Comm Ratio | Pack (s) | AllReduce (s) | Unpack (s) | Last Loss | Peak Mem (GiB) |
 |----------|----------:|---------:|------------:|-----------:|---------:|--------------:|-----------:|-----------|----------------|
