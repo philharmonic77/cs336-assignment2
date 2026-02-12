@@ -232,7 +232,6 @@ def main():
 
     print("Multi GPU + flash:")
 
-    del model_use_flash
     del model_no_flash
     torch.cuda.empty_cache()
 
@@ -244,7 +243,9 @@ def main():
     )
 
     ddp_model = build_model(cfg, use_flash=True)
-    ddp_model.load_state_dict(torch.load("ddp.pt"))
+    sd = torch.load("ddp.pt", map_location="cpu")
+    sd = {k.replace("_orig_mod.", ""): v for k, v in sd.items()}
+    ddp_model.load_state_dict(sd)
 
     # model compare：single + use_flash, ddp + use_flash
     print("Comparing: single_flash vs ddp_flash")
