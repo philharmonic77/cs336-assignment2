@@ -26,7 +26,7 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
 
     optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
-    gen = torch.Generator()
+    gen = torch.Generator(device=device)
     gen.manual_seed(seed)
 
     for _ in range(warmup):
@@ -76,7 +76,7 @@ def run_single(backend, cfg, use_flash, warmup, nsteps, seed=123):
 
     optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
-    gen = torch.Generator()
+    gen = torch.Generator(device=device)
     gen.manual_seed(seed)
 
     for _ in range(warmup):
