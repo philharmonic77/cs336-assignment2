@@ -96,7 +96,7 @@ def generate_and_scatter_data(rank, world_size, batch_size, d1, d3, device, gene
         x_chunks = None
         y_chunks = None
 
-    x = torch.empty(batch_size // world_size, d1, device=device)
+    x = torch.empty(batch_size // world_size, d1, dtype=torch.float32, device=device)
     y = torch.empty(batch_size // world_size, dtype=torch.long, device=device)
     dist.scatter(x, x_chunks, src=0)
     dist.scatter(y, y_chunks, src=0)
