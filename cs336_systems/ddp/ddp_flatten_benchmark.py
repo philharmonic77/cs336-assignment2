@@ -158,9 +158,10 @@ def train_step(model, optimizer, x, y, device, world_size=None):
 
     logits = model(x)
     loss = cross_entropy(logits, y)
-  
+
     loss.backward()
-    torch.cuda.synchronize() if device.type == "cuda" else None
+    if device.type == "cuda":
+        torch.cuda.synchronize()
 
     comm_time = 0.0
     pack_time = 0.0
@@ -171,26 +172,28 @@ def train_step(model, optimizer, x, y, device, world_size=None):
 
         # -------- PACK --------
         t0 = timer()
-
         grads = [p.grad for p in model.parameters() if p.grad is not None]
         flat = _flatten_dense_tensors(grads)
-
+        if device.type == "cuda":
+            torch.cuda.synchronize()
         pack_time = timer() - t0
 
-        # -------- ALLREDUCE (只包通信) --------
+        # -------- ALLREDUCE --------
         t1 = timer()
-
         dist.all_reduce(flat)
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+
         flat /= world_size
 
         allreduce_time = timer() - t1
 
         # -------- UNPACK --------
         t2 = timer()
-
         for grad, synced in zip(grads, _unflatten_dense_tensors(flat, grads)):
             grad.copy_(synced)
-
+        if device.type == "cuda":
+            torch.cuda.synchronize()
         unpack_time = timer() - t2
 
         comm_time = pack_time + allreduce_time + unpack_time
@@ -198,7 +201,9 @@ def train_step(model, optimizer, x, y, device, world_size=None):
     optimizer.step()
     optimizer.zero_grad(set_to_none=True)
 
-    torch.cuda.synchronize() if device.type == "cuda" else None
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+
     total_time = timer() - start_total
 
     return total_time, comm_time, pack_time, allreduce_time, unpack_time, loss.item()
