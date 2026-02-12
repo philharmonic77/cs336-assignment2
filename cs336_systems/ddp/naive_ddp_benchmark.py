@@ -21,8 +21,8 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
 
     model = build_model(cfg, use_flash=use_flash).to(device)
     init_model_and_broadcast(model, rank, src=0)
-    # if device.type == "cuda":
-    #     model = torch.compile(model)
+    if device.type == "cuda":
+        model = torch.compile(model)
 
     optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
@@ -34,21 +34,23 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
         torch.cuda.reset_peak_memory_stats(device)
 
     # ---- warmup (no logging) ----
-    for _ in range(warmup):
+    for i in range(warmup):
 
         x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
-        _ = train_step(model, optimizer, x, y, device, world_size)
+        _, _, loss = train_step(model, optimizer, x, y, device, world_size)
+        print((f"warmup step: {i}, loss: {loss}.:6f"))
 
     # ---- measure ----
     total_time_acc = 0.0
     comm_time_acc = 0.0
     last_loss = None
 
-    for _ in range(nsteps):
+    for i in range(nsteps):
         x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
         total_time, comm_time, loss = train_step(
             model, optimizer, x, y, device, world_size
         )
+        print((f"step: {i}, loss: {loss}.:6f"))
         total_time_acc += total_time
         comm_time_acc += comm_time
         last_loss = loss
@@ -92,8 +94,8 @@ def run_single(backend, cfg, use_flash, warmup, nsteps, seed=123):
         device = torch.device(f"cuda:{0}")
 
     model = build_model(cfg, use_flash=use_flash).to(device)
-    # if device.type == "cuda":
-    #     model = torch.compile(model)
+    if device.type == "cuda":
+        model = torch.compile(model)
 
     optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
@@ -105,17 +107,20 @@ def run_single(backend, cfg, use_flash, warmup, nsteps, seed=123):
         torch.cuda.reset_peak_memory_stats(device)
 
     # ---- warmup (no logging) ----
-    for _ in range(warmup):
+    for i in range(warmup):
         x, y = generate_data_batch(cfg, device, gen)
-        _ = train_step(model, optimizer, x, y, device)
+        _, _, loss = train_step(model, optimizer, x, y, device)
+        print((f"warmup step: {i}, loss: {loss}.:6f"))
 
     # ---- measure ----
     total_time_acc = 0.0
     last_loss = None
 
-    for _ in range(nsteps):
+    for i in range(nsteps):
         x, y = generate_data_batch(cfg, device, gen)
         total_time, _, loss = train_step(model, optimizer, x, y, device)
+        print((f"step: {i}, loss: {loss}.:6f"))
+
         total_time_acc += total_time
         last_loss = loss
 
@@ -181,15 +186,14 @@ def init_model_and_broadcast(model, rank, src):
 def train_step(model, optimizer, x, y, device, world_size=None):
     start_total = timer()
 
-    # with torch.autocast(
-    #     device_type=device.type,
-    #     dtype=torch.bfloat16 if device.type == "cuda" else torch.float32,
-    #     enabled=(device.type == "cuda"),
-    # ):
-    #     logits = model(x)
-    #     loss = cross_entropy(logits, y)
-    logits = model(x)
-    loss = cross_entropy(logits, y)    
+    with torch.autocast(
+        device_type=device.type,
+        dtype=torch.bfloat16 if device.type == "cuda" else torch.float32,
+        enabled=(device.type == "cuda"),
+    ):
+        logits = model(x)
+        loss = cross_entropy(logits, y)
+  
     loss.backward()
     torch.cuda.synchronize() if device.type == "cuda" else None
 
