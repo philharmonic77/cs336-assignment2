@@ -87,13 +87,13 @@ def generate_and_scatter_data(rank, world_size, cfg, device, generator, step: in
     if rank == 0:
         global_x, global_y = generate_data_batch(cfg, device, generator)
 
-        # global fingerprints
         gx = _tensor_fingerprint(global_x)
         gy = _tensor_fingerprint(global_y)
 
-        # pre-chunk sum check (this should always match exactly)
-        x_chunks = list(global_x.chunk(world_size, dim=0))
-        y_chunks = list(global_y.chunk(world_size, dim=0))
+        # ✅ 强制 contiguous，避免 chunk view 引发 scatter 数据错乱
+        x_chunks = [c.contiguous() for c in global_x.chunk(world_size, dim=0)]
+        y_chunks = [c.contiguous() for c in global_y.chunk(world_size, dim=0)]
+
         cx_sum = sum(int(c.sum().item()) for c in x_chunks)
         cy_sum = sum(int(c.sum().item()) for c in y_chunks)
 
@@ -101,8 +101,8 @@ def generate_and_scatter_data(rank, world_size, cfg, device, generator, step: in
         if cx_sum != gx[0] or cy_sum != gy[0]:
             raise AssertionError(f"[DDP step {step}] pre-scatter chunk sum mismatch")
 
-        # ship fingerprints to other ranks for checking
-        meta = torch.tensor([gx[0], gx[1], gx[2], gy[0], gy[1], gy[2]], device=device, dtype=torch.long)
+        meta = torch.tensor([gx[0], gx[1], gx[2], gy[0], gy[1], gy[2]],
+                            device=device, dtype=torch.long)
     else:
         x_chunks = None
         y_chunks = None
