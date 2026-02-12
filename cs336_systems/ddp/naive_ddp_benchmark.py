@@ -42,26 +42,24 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
     # ---- measure ----
     total_time_acc = 0.0
     comm_time_acc = 0.0
-    loss_acc = 0.0
+    last_loss = None
 
     for _ in range(nsteps):
-
         x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
-        total_time, comm_time, loss_val = train_step(
-            model, optimizer, x, y, device, world_size, log_loss=True
+        total_time, comm_time, loss = train_step(
+            model, optimizer, x, y, device, world_size
         )
         total_time_acc += total_time
         comm_time_acc += comm_time
-        loss_acc += loss_val
+        last_loss = loss
 
     # Worst-case (slowest rank) step/comm time is what determines wall-clock iteration time.
     total_tensor = torch.tensor(total_time_acc / nsteps, device=device)
     comm_tensor = torch.tensor(comm_time_acc / nsteps, device=device)
-    loss_tensor = torch.tensor(loss_acc / nsteps, device=device)
+    loss_tensor = torch.tensor(last_loss, device=device)
 
     dist.all_reduce(total_tensor, op=dist.ReduceOp.MAX)
     dist.all_reduce(comm_tensor, op=dist.ReduceOp.MAX)
-    # For loss, average across ranks (each rank saw disjoint data shards).
     dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
     loss_tensor /= world_size
 
@@ -77,9 +75,8 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
 
         print(f"Avg step time: {total_tensor.item():.4f}s")
         print(f"Avg comm time: {comm_tensor.item():.4f}s")
-        print(f"Avg loss: {loss_tensor.item():.6f}")
+        print(f"Last loss: {loss_tensor.item():.6f}")
         print(f"Peak mem: {peak_tensor.item():.2f} GiB")
-
     dist.barrier()
     dist.destroy_process_group()
 
@@ -114,23 +111,21 @@ def run_single(backend, cfg, use_flash, warmup, nsteps, seed=123):
 
     # ---- measure ----
     total_time_acc = 0.0
-    loss_acc = 0.0
+    last_loss = None
 
     for _ in range(nsteps):
         x, y = generate_data_batch(cfg, device, gen)
-        total_time, _, loss_val = train_step(model, optimizer, x, y, device, world_size=None, log_loss=True)
+        total_time, _, loss = train_step(model, optimizer, x, y, device)
         total_time_acc += total_time
-        loss_acc += loss_val
+        last_loss = loss
 
-    avg_time = total_time_acc / nsteps
-    avg_loss = loss_acc / nsteps
+    print(f"Avg step time: {total_time_acc / nsteps:.4f}s")
+    print(f"Last loss: {last_loss:.6f}")
 
     peak_mem = 0.0
     if device.type == "cuda":
         peak_mem = torch.cuda.max_memory_allocated(device) / (1024**3)  # GiB
 
-    print(f"Avg step time: {avg_time:.4f}s")
-    print(f"Avg loss: {avg_loss:.6f}")
     if device.type == "cuda":
         print(f"Peak mem: {peak_mem:.2f} GiB")
 
@@ -183,7 +178,7 @@ def init_model_and_broadcast(model, rank, src):
             dist.broadcast(b.data, src=src)
             
 
-def train_step(model, optimizer, x, y, device, world_size=None, log_loss=True):
+def train_step(model, optimizer, x, y, device, world_size=None):
     start_total = timer()
 
     with torch.autocast(
@@ -201,7 +196,6 @@ def train_step(model, optimizer, x, y, device, world_size=None, log_loss=True):
 
     if world_size is not None:
         start_comm = timer()
-
         for p in model.parameters():
             if p.grad is not None:
                 dist.all_reduce(p.grad)
@@ -216,8 +210,7 @@ def train_step(model, optimizer, x, y, device, world_size=None, log_loss=True):
     torch.cuda.synchronize() if device.type == "cuda" else None
     total_time = timer() - start_total
 
-    loss_val = loss.detach().float().item() if log_loss else 0.0
-    return total_time, comm_time, loss_val
+    return total_time, comm_time, loss.item()
 
     
 def compare_models(m1, m2, atol=1e-4, rtol=1e-4):
