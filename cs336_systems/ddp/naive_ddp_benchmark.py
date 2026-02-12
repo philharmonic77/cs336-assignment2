@@ -6,7 +6,7 @@ from cs336_systems.flash_attn.model_builder import build_model, ModelConfig
 from cs336_basics.losses import cross_entropy
 from cs336_basics.optim import AdamW
 from timeit import default_timer as timer
-# use mixed precision、torch.compile
+# close mixed precision、use torch.compile
 
 
 
@@ -184,13 +184,15 @@ def init_model_and_broadcast(model, rank, src):
 def train_step(model, optimizer, x, y, device, world_size=None):
     start_total = timer()
 
-    with torch.autocast(
-        device_type=device.type,
-        dtype=torch.bfloat16 if device.type == "cuda" else torch.float32,
-        enabled=(device.type == "cuda"),
-    ):
-        logits = model(x)
-        loss = cross_entropy(logits, y)
+    # with torch.autocast(
+    #     device_type=device.type,
+    #     dtype=torch.bfloat16 if device.type == "cuda" else torch.float32,
+    #     enabled=(device.type == "cuda"),
+    # ):
+    #     logits = model(x)
+    #     loss = cross_entropy(logits, y)
+    logits = model(x)
+    loss = cross_entropy(logits, y)
   
     loss.backward()
     torch.cuda.synchronize() if device.type == "cuda" else None
