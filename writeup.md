@@ -500,3 +500,35 @@ For small tensor sizes (e.g., 1MB), runtime is dominated by communication latenc
 
 ### Problem (naive_ddp): 5 points
 code file: [[python]](cs336_systems/ddp/naive_ddp.py)
+
+### Problem (naive_ddp_benchmarking): 3 points
+code file: [[python]](cs336_systems/ddp/naive_ddp_benchmark.py)
+#### Experimental Setup
+
+- **Model:** Large Transformer (not XL, due to RTX 4090 memory limits)  
+- **Batch size:** 4  
+- **Context length:** 512  
+
+#### Consistency Controls
+- Fixed random seed for initialization  
+- Identical global batches across single and DDP runs  
+- All scattered tensors made **contiguous** to ensure memory-layout consistency  
+
+#### Runtime Settings
+- **Mixed precision disabled** (to improve numerical comparability)  
+- **`torch.compile` enabled**  
+
+#### Results Summary (Large Model, bs=4, ctx=512, compile on, no mixed precision)
+
+| Setting            | Total (s) | Comm (s) | Compute (s) | Comm Ratio | Last Loss  | Peak Mem (GiB) | Worst Param Diff |
+|--------------------|----------:|---------:|------------:|-----------:|------------|----------------|------------------|
+| Single + Flash     | 0.4438    | —        | 0.4438      | —          | 9.342847   | 18.96          | —                |
+| Multi + Flash  | 0.5739    | 0.3343   | 0.2396      | 58.3%      | 9.342881   | 15.15          | 4.67e-4          |
+
+
+
+#### Conclusion
+
+- Over **half (58%)** of DDP step time is spent in gradient synchronization. Pure compute under DDP (0.2396s) is faster than single GPU (0.4438s).
+- However, communication overhead eliminates overall speedup at this small batch size. This is expected for **bs=4** — insufficient compute to amortize all-reduce cost.
+- Final loss values are nearly identical. Parameter differences are very small (max diff ≈ 4.7e-4), indicating numerical—not logical—divergence
