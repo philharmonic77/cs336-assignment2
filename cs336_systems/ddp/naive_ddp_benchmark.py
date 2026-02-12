@@ -1,4 +1,4 @@
-import torch 
+import torch
 import os
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -29,25 +29,47 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
     gen = torch.Generator(device=device)
     gen.manual_seed(seed)
 
+    # ---- memory stats ----
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+
+    # ---- warmup (no logging) ----
     for _ in range(warmup):
 
         x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
-        _, _ = train_step(model, optimizer, x, y, device, world_size)       
+        _ = train_step(model, optimizer, x, y, device, world_size, log_loss=False)
 
+    # ---- measure ----
     total_time_acc = 0.0
     comm_time_acc = 0.0
+    loss_acc = 0.0
+
     for _ in range(nsteps):
 
         x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
-        total_time, comm_time = train_step(model, optimizer, x, y, device, world_size)
+        total_time, comm_time, loss_val = train_step(
+            model, optimizer, x, y, device, world_size, log_loss=True
+        )
         total_time_acc += total_time
         comm_time_acc += comm_time
+        loss_acc += loss_val
 
+    # Worst-case (slowest rank) step/comm time is what determines wall-clock iteration time.
     total_tensor = torch.tensor(total_time_acc / nsteps, device=device)
     comm_tensor = torch.tensor(comm_time_acc / nsteps, device=device)
+    loss_tensor = torch.tensor(loss_acc / nsteps, device=device)
 
     dist.all_reduce(total_tensor, op=dist.ReduceOp.MAX)
     dist.all_reduce(comm_tensor, op=dist.ReduceOp.MAX)
+    # For loss, average across ranks (each rank saw disjoint data shards).
+    dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
+    loss_tensor /= world_size
+
+    peak_mem = 0.0
+    if device.type == "cuda":
+        peak_mem = torch.cuda.max_memory_allocated(device) / (1024**3)  # GiB
+    peak_tensor = torch.tensor(peak_mem, device=device)
+    dist.all_reduce(peak_tensor, op=dist.ReduceOp.MAX)
 
     dist.barrier()
     if rank == 0:
@@ -55,6 +77,8 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
 
         print(f"Avg step time: {total_tensor.item():.4f}s")
         print(f"Avg comm time: {comm_tensor.item():.4f}s")
+        print(f"Avg loss: {loss_tensor.item():.6f}")
+        print(f"Peak mem: {peak_tensor.item():.2f} GiB")
 
     dist.barrier()
     dist.destroy_process_group()
@@ -79,17 +103,36 @@ def run_single(backend, cfg, use_flash, warmup, nsteps, seed=123):
     gen = torch.Generator(device=device)
     gen.manual_seed(seed)
 
+    # ---- memory stats ----
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+
+    # ---- warmup (no logging) ----
     for _ in range(warmup):
         x, y = generate_data_batch(cfg, device, gen)
-        _, _ = train_step(model, optimizer, x, y, device)
+        _ = train_step(model, optimizer, x, y, device)
 
+    # ---- measure ----
     total_time_acc = 0.0
+    loss_acc = 0.0
+
     for _ in range(nsteps):
         x, y = generate_data_batch(cfg, device, gen)
-        total_time, _ = train_step(model, optimizer, x, y, device)
+        total_time, _, loss_val = train_step(model, optimizer, x, y, device, world_size=None, log_loss=True)
         total_time_acc += total_time
+        loss_acc += loss_val
 
-    print(f"Avg step time: {total_time_acc / nsteps:.4f}s")
+    avg_time = total_time_acc / nsteps
+    avg_loss = loss_acc / nsteps
+
+    peak_mem = 0.0
+    if device.type == "cuda":
+        peak_mem = torch.cuda.max_memory_allocated(device) / (1024**3)  # GiB
+
+    print(f"Avg step time: {avg_time:.4f}s")
+    print(f"Avg loss: {avg_loss:.6f}")
+    if device.type == "cuda":
+        print(f"Peak mem: {peak_mem:.2f} GiB")
 
     return model
 
@@ -140,7 +183,7 @@ def init_model_and_broadcast(model, rank, src):
             dist.broadcast(b.data, src=src)
             
 
-def train_step(model, optimizer, x, y, device, world_size=None):
+def train_step(model, optimizer, x, y, device, world_size=None, log_loss=True):
     start_total = timer()
 
     with torch.autocast(
@@ -173,7 +216,8 @@ def train_step(model, optimizer, x, y, device, world_size=None):
     torch.cuda.synchronize() if device.type == "cuda" else None
     total_time = timer() - start_total
 
-    return total_time, comm_time
+    loss_val = loss.detach().float().item() if log_loss else 0.0
+    return total_time, comm_time, loss_val
 
     
 def compare_models(m1, m2, atol=1e-4, rtol=1e-4):
@@ -226,15 +270,14 @@ def main():
 
     print("Single GPU + flash:")
     model_use_flash = run_single(backend, cfg, use_flash=True, warmup=warmup, nsteps=nsteps, seed=seed)
+
     print("Single GPU + no flash:")
     model_no_flash = run_single(backend, cfg, use_flash=False, warmup=warmup, nsteps=nsteps, seed=seed)
 
-    # model compare：single + use_flash, single + no_flash
     print("Comparing: single_flash vs single_no_flash")
     compare_models(model_use_flash, model_no_flash)
 
     print("Multi GPU + flash:")
-
     del model_no_flash
     torch.cuda.empty_cache()
 
@@ -250,7 +293,6 @@ def main():
     sd = {k.replace("_orig_mod.", ""): v for k, v in sd.items()}
     ddp_model.load_state_dict(sd)
 
-    # model compare：single + use_flash, ddp + use_flash
     print("Comparing: single_flash vs ddp_flash")
     compare_models(model_use_flash, ddp_model)
 
