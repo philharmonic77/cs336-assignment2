@@ -21,8 +21,8 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
 
     model = build_model(cfg, use_flash=use_flash).to(device)
     init_model_and_broadcast(model, rank, src=0)
-    if device.type == "cuda":
-        model = torch.compile(model)
+    # if device.type == "cuda":
+    #     model = torch.compile(model)
 
     optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
@@ -92,8 +92,8 @@ def run_single(backend, cfg, use_flash, warmup, nsteps, seed=123):
         device = torch.device(f"cuda:{0}")
 
     model = build_model(cfg, use_flash=use_flash).to(device)
-    if device.type == "cuda":
-        model = torch.compile(model)
+    # if device.type == "cuda":
+    #     model = torch.compile(model)
 
     optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
