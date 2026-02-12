@@ -44,26 +44,41 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
         _ = train_step(model, optimizer, x, y, device, world_size)
 
     # ---- measure ----
-    total_time_acc = 0.0
+    pack_time_acctotal_time_acc = 0.0
     comm_time_acc = 0.0
+    pack_time_acc = 0.0
+    allreduce_time_acc = 0.0
+    unpack_time_acc = 0.0
     last_loss = None
 
     for _ in range(nsteps):
         x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
-        total_time, comm_time, loss = train_step(
+        total_time, comm_time, pack_time, allreduce_time, unpack_time, loss = train_step(
             model, optimizer, x, y, device, world_size
         )
         total_time_acc += total_time
         comm_time_acc += comm_time
+        pack_time_acc += pack_time
+        allreduce_time_acc += allreduce_time
+        unpack_time_acc += unpack_time
+
         last_loss = loss
 
     # Worst-case (slowest rank) step/comm time is what determines wall-clock iteration time.
     total_tensor = torch.tensor(total_time_acc / nsteps, device=device)
     comm_tensor = torch.tensor(comm_time_acc / nsteps, device=device)
+    pack_tensor = torch.tensor(pack_time_acc / nsteps, device=device)
+    allreduce_tensor = torch.tensor(allreduce_time_acc / nsteps, device=device)
+    unpack_tensor = torch.tensor(unpack_time_acc / nsteps, device=device)
+
     loss_tensor = torch.tensor(last_loss, device=device)
 
     dist.all_reduce(total_tensor, op=dist.ReduceOp.MAX)
     dist.all_reduce(comm_tensor, op=dist.ReduceOp.MAX)
+    dist.all_reduce(pack_tensor, op=dist.ReduceOp.MAX)
+    dist.all_reduce(allreduce_tensor, op=dist.ReduceOp.MAX)
+    dist.all_reduce(unpack_tensor, op=dist.ReduceOp.MAX)
+
     dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
     loss_tensor /= world_size
 
@@ -79,6 +94,9 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
 
         print(f"Avg step time: {total_tensor.item():.4f}s")
         print(f"Avg comm time: {comm_tensor.item():.4f}s")
+        print(f"Pack time:      {pack_tensor:.6f}s")
+        print(f"AllReduce time: {allreduce_tensor:.6f}s")
+        print(f"Unpack time:    {unpack_tensor:.6f}s")
         print(f"Last loss: {loss_tensor.item():.6f}")
         print(f"Peak mem: {peak_tensor.item():.2f} GiB")
     dist.barrier()
@@ -145,19 +163,37 @@ def train_step(model, optimizer, x, y, device, world_size=None):
     torch.cuda.synchronize() if device.type == "cuda" else None
 
     comm_time = 0.0
+    pack_time = 0.0
+    allreduce_time = 0.0
+    unpack_time = 0.0
 
     if world_size is not None:
-        start_comm = timer()
+
+        # -------- PACK --------
+        t0 = timer()
 
         grads = [p.grad for p in model.parameters() if p.grad is not None]
         flat = _flatten_dense_tensors(grads)
+
+        pack_time = timer() - t0
+
+        # -------- ALLREDUCE (只包通信) --------
+        t1 = timer()
+
         dist.all_reduce(flat)
         flat /= world_size
+
+        allreduce_time = timer() - t1
+
+        # -------- UNPACK --------
+        t2 = timer()
+
         for grad, synced in zip(grads, _unflatten_dense_tensors(flat, grads)):
             grad.copy_(synced)
 
-        torch.cuda.synchronize() if device.type == "cuda" else None
-        comm_time = timer() - start_comm
+        unpack_time = timer() - t2
+
+        comm_time = pack_time + allreduce_time + unpack_time
 
     optimizer.step()
     optimizer.zero_grad(set_to_none=True)
@@ -165,7 +201,7 @@ def train_step(model, optimizer, x, y, device, world_size=None):
     torch.cuda.synchronize() if device.type == "cuda" else None
     total_time = timer() - start_total
 
-    return total_time, comm_time, loss.item()
+    return total_time, comm_time, pack_time, allreduce_time, unpack_time, loss.item()
 
        
 
