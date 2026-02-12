@@ -184,8 +184,7 @@ def train_step(model, optimizer, x, y, device, world_size=None):
     with torch.autocast(
         device_type=device.type,
         dtype=torch.bfloat16 if device.type == "cuda" else torch.float32,
-        # enabled=(device.type == "cuda"),
-        enabled=False,
+        enabled=(device.type == "cuda"),
     ):
         logits = model(x)
         loss = cross_entropy(logits, y)
