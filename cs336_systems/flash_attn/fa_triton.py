@@ -164,6 +164,7 @@ class FlashAttentionTritonFunc(torch.autograd.Function):
     @torch.compile
     def backward(ctx, dO):
         Q, K, V, O, L = ctx.saved_tensors
+        dO = dO.reshape(Q.shape)
         is_causal = ctx.is_causal
 
         # Q,K,V,O: (B, N, d)
