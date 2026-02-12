@@ -517,6 +517,7 @@ code file: [[python]](cs336_systems/ddp/naive_ddp_benchmark.py)
 #### Runtime Settings
 - **Mixed precision disabled** (to improve numerical comparability)  
 - **`torch.compile` enabled**  
+- warmup=5, nsteps=10
 
 #### Results Summary (Large Model, bs=4, ctx=512, compile on, no mixed precision)
 
@@ -531,4 +532,15 @@ code file: [[python]](cs336_systems/ddp/naive_ddp_benchmark.py)
 
 - Over **half (58%)** of DDP step time is spent in gradient synchronization. Pure compute under DDP (0.2396s) is faster than single GPU (0.4438s).
 - However, communication overhead eliminates overall speedup at this small batch size. This is expected for **bs=4** — insufficient compute to amortize all-reduce cost.
-- Final loss values are nearly identical. Parameter differences are very small (max diff ≈ 4.7e-4), indicating numerical—not logical—divergence
+- Final loss values are nearly identical. Parameter differences are very small (max diff ≈ 4.7e-4), indicating numerical—not logical—divergence. Mismatched 14 tensors out of 300+ in total.
+
+### Problem (minimal_ddp_flat_benchmarking): 2 points
+
+| Setting | Total (s) | Comm (s) | Compute (s) | Comm Ratio | Pack (s) | AllReduce (s) | Unpack (s) | Last Loss | Peak Mem (GiB) |
+|----------|----------:|---------:|------------:|-----------:|---------:|--------------:|-----------:|-----------|----------------|
+| **Naive DDP (per-param)** | 0.5739 | 0.3343 | 0.2396 | 58.3% | — | — | — | 9.342881 | 15.15 |
+| **Flattened DDP (batched)** | 0.5647 | 0.3239 | 0.2408 | 57.4% | 0.0105 | 0.2964 | 0.0169 | 9.342879 | 18.58 | 
+
+#### Conclusion
+- **0.5739s → 0.5647s  (~1.6% speedup)** in total, **0.3343 → 0.3239 (~3.1% speedup)**  in communication, **0.3343 → 0.2964 (~11.3% speedup)** consider only all reduce. Which means flattening meaningfully reduces collective overhead, but overall speedup is small because communication is bandwidth-bound.
+- In this 2×RTX 4090 PCIe setup, communication bandwidth—not launch overhead—is the dominant bottleneck.
