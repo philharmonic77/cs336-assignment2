@@ -38,7 +38,7 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
 
         x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
         _, _, loss = train_step(model, optimizer, x, y, device, world_size)
-        print((f"warmup step: {i}, loss: {loss}.:6f"))
+        print((f"warmup step: {i}, loss: {loss}:.6f"))
 
     # ---- measure ----
     total_time_acc = 0.0
@@ -50,7 +50,7 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
         total_time, comm_time, loss = train_step(
             model, optimizer, x, y, device, world_size
         )
-        print((f"step: {i}, loss: {loss}.:6f"))
+        print((f"step: {i}, loss: {loss}:.6f"))
         total_time_acc += total_time
         comm_time_acc += comm_time
         last_loss = loss
@@ -110,7 +110,7 @@ def run_single(backend, cfg, use_flash, warmup, nsteps, seed=123):
     for i in range(warmup):
         x, y = generate_data_batch(cfg, device, gen)
         _, _, loss = train_step(model, optimizer, x, y, device)
-        print((f"warmup step: {i}, loss: {loss}.:6f"))
+        print((f"warmup step: {i}, loss: {loss}:.6f"))
 
     # ---- measure ----
     total_time_acc = 0.0
@@ -119,7 +119,7 @@ def run_single(backend, cfg, use_flash, warmup, nsteps, seed=123):
     for i in range(nsteps):
         x, y = generate_data_batch(cfg, device, gen)
         total_time, _, loss = train_step(model, optimizer, x, y, device)
-        print((f"step: {i}, loss: {loss}.:6f"))
+        print((f"step: {i}, loss: {loss}:.6f"))
 
         total_time_acc += total_time
         last_loss = loss
