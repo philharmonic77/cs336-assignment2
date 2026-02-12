@@ -218,6 +218,11 @@ def main():
     compare_models(model_use_flash, model_no_flash)
 
     print("Multi GPU + flash:")
+
+    del model_use_flash
+    del model_no_flash
+    torch.cuda.empty_cache()
+    
     mp.spawn(
         fn=run_naive_ddp,
         args=(world_size, backend, cfg, True, warmup, nsteps, seed),
