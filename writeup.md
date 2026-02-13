@@ -454,7 +454,7 @@ Here is the script used to calculate: [[bash]](scripts/run_nsys_profile_compile.
 Code files are put at this [folder](cs336_systems/flash_attn/).
 
 ### Problem (flash_benchmarking): 5 points
-Temp pass
+I did not complete the full set of experiments, but I have included some partial results [here](#single-gpu-benchmark-medium-model-ctx768-bs4).
 
 ### Problem (distributed_communication_single_node): 5 points
 code file: [[python]](cs336_systems/ddp/all_reduce_benchmark.py)
@@ -526,6 +526,13 @@ code file: [[python]](cs336_systems/ddp/naive_ddp_benchmark.py)
 | Single + Flash     | 0.4438    | —        | 0.4438      | —          | 9.342847   | 18.96          | —                |
 | Multi + Flash  | 0.5739    | 0.3343   | 0.2396      | 58.3%      | 9.342881   | 15.15          | 4.67e-4          |
 
+#### Conclusion
+
+- Over **half (58%)** of DDP step time is spent in gradient synchronization. Pure compute under DDP (0.2396s) is faster than single GPU (0.4438s).
+- However, communication overhead eliminates overall speedup at this small batch size. This is expected for **bs=4** — insufficient compute to amortize all-reduce cost.
+- Final loss values are nearly identical. Parameter differences are very small (max diff ≈ 4.7e-4), indicating numerical—not logical—divergence. Mismatched 14 tensors out of 300+ in total.
+
+
 #### Single GPU Benchmark (Medium Model, ctx=768, bs=4)
 The assignment did not require this experiment, but I conducted it additionally for further analysis.
 
@@ -536,12 +543,6 @@ The assignment did not require this experiment, but I conducted it additionally 
 | Flash      | ✅       | 0.2759        | **+9% faster**  | 11.22          | **−8.04 GiB**     |
 | No Flash   | ✅       | 0.3034        | —             | 19.26          | —                 |
 
-
-#### Conclusion
-
-- Over **half (58%)** of DDP step time is spent in gradient synchronization. Pure compute under DDP (0.2396s) is faster than single GPU (0.4438s).
-- However, communication overhead eliminates overall speedup at this small batch size. This is expected for **bs=4** — insufficient compute to amortize all-reduce cost.
-- Final loss values are nearly identical. Parameter differences are very small (max diff ≈ 4.7e-4), indicating numerical—not logical—divergence. Mismatched 14 tensors out of 300+ in total.
 
 ### Problem (minimal_ddp_flat_benchmarking): 2 points
 code file: [[python]](cs336_systems/ddp/ddp_flatten_benchmark.py)
