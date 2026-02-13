@@ -163,3 +163,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# bash: uv run nsys profile --trace=cuda,nvtx --pytorch=autograd-nvtx --force-overwrite=true -o results/nsys/ddp/overlap_ddp.nsys-rep python cs336_systems/ddp/ddp_overlap_benchmark.py
+
