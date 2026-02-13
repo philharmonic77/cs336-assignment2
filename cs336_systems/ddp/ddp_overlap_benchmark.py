@@ -7,6 +7,7 @@ from cs336_basics.losses import cross_entropy
 from cs336_basics.optim import AdamW
 from timeit import default_timer as timer
 from cs336_systems.ddp.overlap import DDP
+import torch.cuda.nvtx as nvtx
 
 # close mixed precision、use torch.compile
 
@@ -47,13 +48,14 @@ def run_overlap_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, s
     total_time_acc = 0.0
     last_loss = None
 
-    for _ in range(nsteps):
-        x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
-        total_time, loss = train_step(
-            model, optimizer, x, y
-        )
-        total_time_acc += total_time
-        last_loss = loss
+    with nvtx.range("measure"):
+        for _ in range(nsteps):
+            x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
+            total_time, loss = train_step(
+                model, optimizer, x, y
+            )
+            total_time_acc += total_time
+            last_loss = loss
 
     total_tensor = torch.tensor(total_time_acc / nsteps, device=device)
     loss_tensor = torch.tensor(last_loss, device=device)
@@ -123,13 +125,16 @@ def setup(rank: int, world_size: int, backend: str) -> None:
 def train_step(model, optimizer, x, y):
     start_total = timer()
 
-    logits = model(x)
-    loss = cross_entropy(logits, y)
-    loss.backward()
+    with nvtx.range("forward"):
+        logits = model(x)
+        loss = cross_entropy(logits, y)
+    with nvtx.range("backward"):
+        loss.backward()
 
     model.finish_gradient_synchronization()
-    
-    optimizer.step()
+
+    with nvtx.range("optimize"):
+        optimizer.step()
     optimizer.zero_grad(set_to_none=True)
 
     total_time = timer() - start_total

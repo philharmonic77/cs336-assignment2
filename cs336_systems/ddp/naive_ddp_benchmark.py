@@ -6,6 +6,7 @@ from cs336_systems.flash_attn.model_builder import build_model, ModelConfig
 from cs336_basics.losses import cross_entropy
 from cs336_basics.optim import AdamW
 from timeit import default_timer as timer
+import torch.cuda.nvtx as nvtx
 # close mixed precision、use torch.compile
 
 
@@ -113,12 +114,13 @@ def run_single(backend, cfg, use_flash, warmup, nsteps, seed=123):
     total_time_acc = 0.0
     last_loss = None
 
-    for _ in range(nsteps):
-        x, y = generate_data_batch(cfg, device, gen)
-        total_time, _, loss = train_step(model, optimizer, x, y, device)
+    with nvtx.range("measure"):
+        for _ in range(nsteps):
+            x, y = generate_data_batch(cfg, device, gen)
+            total_time, _, loss = train_step(model, optimizer, x, y, device)
 
-        total_time_acc += total_time
-        last_loss = loss
+            total_time_acc += total_time
+            last_loss = loss
 
     print(f"Avg step time: {total_time_acc / nsteps:.4f}s")
     print(f"Last loss: {last_loss:.6f}")
@@ -191,25 +193,29 @@ def train_step(model, optimizer, x, y, device, world_size=None):
     # ):
     #     logits = model(x)
     #     loss = cross_entropy(logits, y)
-    logits = model(x)
-    loss = cross_entropy(logits, y)
-  
-    loss.backward()
+    with nvtx.range("forward"):
+        logits = model(x)
+        loss = cross_entropy(logits, y)
+
+    with nvtx.range("backward"):  
+        loss.backward()
     torch.cuda.synchronize() if device.type == "cuda" else None
 
     comm_time = 0.0
 
-    if world_size is not None:
-        start_comm = timer()
-        for p in model.parameters():
-            if p.grad is not None:
-                dist.all_reduce(p.grad)
-                p.grad /= world_size
+    with nvtx.range("allreduce"): 
+        if world_size is not None:
+            start_comm = timer()
+            for p in model.parameters():
+                if p.grad is not None:
+                    dist.all_reduce(p.grad)
+                    p.grad /= world_size
 
         torch.cuda.synchronize() if device.type == "cuda" else None
         comm_time = timer() - start_comm
 
-    optimizer.step()
+    with nvtx.range("optimize"): 
+        optimizer.step()
     optimizer.zero_grad(set_to_none=True)
 
     torch.cuda.synchronize() if device.type == "cuda" else None
