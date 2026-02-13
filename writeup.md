@@ -547,6 +547,7 @@ The assignment did not require this experiment, but I conducted it additionally 
 ### Problem (minimal_ddp_flat_benchmarking): 2 points
 code file: [[python]](cs336_systems/ddp/ddp_flatten_benchmark.py)
 
+#### Results Summary (Large Model, bs=4, ctx=512, compile on, no mixed precision)
 | Setting | Total (s) | Comm (s) | Compute (s) | Comm Ratio | Pack (s) | AllReduce (s) | Unpack (s) | Last Loss | Peak Mem (GiB) |
 |----------|----------:|---------:|------------:|-----------:|---------:|--------------:|-----------:|-----------|----------------|
 | **Naive DDP (per-param)** | 0.5739 | 0.3343 | 0.2396 | 58.3% | — | — | — | 9.342881 | 15.15 |
@@ -555,3 +556,21 @@ code file: [[python]](cs336_systems/ddp/ddp_flatten_benchmark.py)
 #### Conclusion
 - **0.5739s → 0.5647s  (~1.6% speedup)** in total, **0.3343 → 0.3239 (~3.1% speedup)**  in communication, **0.3343 → 0.2964 (~11.3% speedup)** consider only all reduce. Which means flattening meaningfully reduces collective overhead, but overall speedup is small because communication is bandwidth-bound.
 - In this 2×RTX 4090 PCIe setup, communication bandwidth—not launch overhead—is the dominant bottleneck.
+
+### Problem (ddp_overlap_individual_parameters): 5 points
+code file: [[python]](cs336_systems/ddp/overlap.py)
+
+### Problem (ddp_overlap_individual_parameters_benchmarking): 1 point
+(a) The measured time per training iteration with asynchronous per-parameter gradient communication (overlapping backward computation with communication) is 0.5554 seconds.
+
+Compared to naïve per-parameter DDP (0.5739 s), this yields a ~3.2% speedup, indicating modest but measurable improvement from overlapping communication with backward computation in the single-node (2 GPU) setting.
+#### Results Summary (Large Model, bs=4, ctx=512, compile on, no mixed precision)
+| Setting                          | Total (s) | Δ Time vs Naive | Peak Mem (GiB) | Δ Mem vs Naive |
+|-----------------------------------|----------:|----------------:|---------------:|----------------:|
+| **Naive DDP (per-param)**        | 0.5739    | —               | 15.15          | —               |
+| **Flattened DDP (batched)**      | 0.5647    | -1.6%           | 18.58          | +22.6%         |
+| **Overlap DDP (async per-param)**| 0.5554    | -3.2%           | 15.13          | -0.1%          |
+
+
+code file: [[python]](cs336_systems/ddp/naive_ddp_benchmark.py)
+
