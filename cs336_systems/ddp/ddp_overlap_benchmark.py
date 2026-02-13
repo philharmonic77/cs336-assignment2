@@ -41,7 +41,7 @@ def run_overlap_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, s
     for _ in range(warmup):
 
         x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
-        _ = train_step(model, optimizer, x, y, device, world_size)
+        _ = train_step(model, optimizer, x, y)
 
     # ---- measure ----
     total_time_acc = 0.0
@@ -54,7 +54,7 @@ def run_overlap_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, s
     for _ in range(nsteps):
         x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
         total_time, loss = train_step(
-            model, optimizer, x, y, device, world_size
+            model, optimizer, x, y
         )
         total_time_acc += total_time
         last_loss = loss
