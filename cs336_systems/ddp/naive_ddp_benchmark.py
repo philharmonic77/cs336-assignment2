@@ -266,8 +266,8 @@ def main():
     nsteps = 10
     seed = 123
 
-    print("Single GPU + flash:")
-    model_use_flash = run_single(backend, cfg, use_flash=True, warmup=warmup, nsteps=nsteps, seed=seed)
+    # print("Single GPU + flash:")
+    # model_use_flash = run_single(backend, cfg, use_flash=True, warmup=warmup, nsteps=nsteps, seed=seed)
 
     # print("Single GPU + no flash:")
     # model_no_flash = run_single(backend, cfg, use_flash=False, warmup=warmup, nsteps=nsteps, seed=seed)
@@ -275,9 +275,9 @@ def main():
     # print("Comparing: single_flash vs single_no_flash")
     # compare_models(model_use_flash, model_no_flash)
 
-    print("Multi GPU + flash:")
-    # del model_no_flash
-    torch.cuda.empty_cache()
+    # print("Multi GPU + flash:")
+    # # del model_no_flash
+    # torch.cuda.empty_cache()
 
     mp.spawn(
         fn=run_naive_ddp,
@@ -286,16 +286,16 @@ def main():
         join=True,
     )
 
-    ddp_model = build_model(cfg, use_flash=True)
-    sd = torch.load("ddp.pt", map_location="cpu")
-    sd = {k.replace("_orig_mod.", ""): v for k, v in sd.items()}
-    ddp_model.load_state_dict(sd)
+    # ddp_model = build_model(cfg, use_flash=True)
+    # sd = torch.load("ddp.pt", map_location="cpu")
+    # sd = {k.replace("_orig_mod.", ""): v for k, v in sd.items()}
+    # ddp_model.load_state_dict(sd)
 
-    print("Comparing: single_flash vs ddp_flash")
-    compare_models(model_use_flash, ddp_model)
+    # print("Comparing: single_flash vs ddp_flash")
+    # compare_models(model_use_flash, ddp_model)
 
-    if os.path.exists("ddp.pt"):
-        os.remove("ddp.pt")
+    # if os.path.exists("ddp.pt"):
+    #     os.remove("ddp.pt")
 
 
 if __name__ == "__main__":

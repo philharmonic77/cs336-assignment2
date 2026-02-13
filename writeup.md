@@ -574,3 +574,10 @@ Compared to naïve per-parameter DDP (0.5739 s), this yields a ~3.2% speedup, in
 
 code file: [[python]](cs336_systems/ddp/naive_ddp_benchmark.py)
 
+### Problem (ddp_overlap_bucketed): 8 points
+code file: [[python]](cs336_systems/ddp/overlap.py)
+
+### Problem (ddp_bucketed_benchmarking): 3 points
+(a)
+
+
