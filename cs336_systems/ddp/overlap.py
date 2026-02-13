@@ -33,6 +33,8 @@ class DDP(torch.nn.Module):
         """
         Calls the wrapped module’s forward() method with the provided positional and keyword arguments.
         """
+        if len(inputs) == 0 and len(kwargs) == 0:
+            return self
         return self.module(*inputs, **kwargs)
 
     def finish_gradient_synchronization(self): 
