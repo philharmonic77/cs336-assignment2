@@ -15,6 +15,11 @@ class DDP(torch.nn.Module):
         self.world_size = dist.get_world_size()
         self.handles = []
 
+        for p in self.module.parameters():
+            dist.broadcast(p.data, src=0)
+        for b in self.module.buffers():
+            dist.broadcast(b.data, src=0)
+
         for p in module.parameters():
             if p.requires_grad:
                 p.register_post_accumulate_grad_hook(lambda p: self.hook(p))
