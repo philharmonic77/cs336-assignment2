@@ -526,6 +526,16 @@ code file: [[python]](cs336_systems/ddp/naive_ddp_benchmark.py)
 | Single + Flash     | 0.4438    | —        | 0.4438      | —          | 9.342847   | 18.96          | —                |
 | Multi + Flash  | 0.5739    | 0.3343   | 0.2396      | 58.3%      | 9.342881   | 15.15          | 4.67e-4          |
 
+#### Single GPU Benchmark (Medium Model, ctx=768, bs=4)
+The assignment did not require this experiment, but I conducted it additionally for further analysis.
+
+| Setting    | Compile | Step Time (s) | Δ vs No-Flash | Peak Mem (GiB) | Δ Mem vs No-Flash |
+|------------|----------|---------------|---------------|----------------|-------------------|
+| Flash      | ❌       | 0.3305        | **+31% faster** | 13.98          | **−8.07 GiB**     |
+| No Flash   | ❌       | 0.4804        | —             | 22.05          | —                 |
+| Flash      | ✅       | 0.2759        | **+9% faster**  | 11.22          | **−8.04 GiB**     |
+| No Flash   | ✅       | 0.3034        | —             | 19.26          | —                 |
+
 
 #### Conclusion
 
