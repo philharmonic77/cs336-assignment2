@@ -127,6 +127,8 @@ def train_step(model, optimizer, x, y):
     loss = cross_entropy(logits, y)
     loss.backward()
 
+    model.finish_gradient_synchronization()
+    
     optimizer.step()
     optimizer.zero_grad(set_to_none=True)
 
