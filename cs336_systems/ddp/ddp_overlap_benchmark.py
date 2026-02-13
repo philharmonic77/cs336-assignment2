@@ -45,10 +45,6 @@ def run_overlap_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, s
 
     # ---- measure ----
     total_time_acc = 0.0
-    comm_time_acc = 0.0
-    pack_time_acc = 0.0
-    allreduce_time_acc = 0.0
-    unpack_time_acc = 0.0
     last_loss = None
 
     for _ in range(nsteps):
