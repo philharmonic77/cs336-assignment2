@@ -22,7 +22,8 @@ def run_overlap_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, s
         device = torch.device(f"cuda:{rank}")
 
     model = build_model(cfg, use_flash=use_flash)
-    model = DDP(model).to(device)
+    model.to(device)
+    model = DDP(model)
 
     if device.type == "cuda":
         model = torch.compile(model)
