@@ -574,10 +574,49 @@ Compared to naïve per-parameter DDP (0.5739 s), this yields a ~3.2% speedup, in
 
 code file: [[python]](cs336_systems/ddp/naive_ddp_benchmark.py)
 
+
+(b) In the timeline, the blue bars correspond to compute kernels (forward and backward operations), while the gray bars represent NCCL allreduce communication kernels. In the overlap version, the gray NCCL kernels appear concurrently with blue compute kernels on the GPU timeline, indicating that communication is overlapped with computation rather than executed strictly after the backward pass.
+
+
+| naive ddp - autograd thread | naive ddp - gpu stream |
+|-------------|---------------|
+| ![](assets/nsys_naive_ddp_1.png) | ![](assets/nsys_naive_ddp_2.png) |
+
+| overlap ddp - autograd thread | overlap ddp - gpu stream |
+|------------------------|-------------|
+| ![](assets/nsys_overlap_ddp_1.png) | ![](assets/nsys_overlap_ddp_2.png) |
+
+> 【NOTE】From this experiment, I disable PyTorch model compilation. This causes the flattened DDP implementation to run out of memory (as expected), but the results for the other variants become clearer, even though overall memory usage increases.
+
 ### Problem (ddp_overlap_bucketed): 8 points
 code file: [[python]](cs336_systems/ddp/overlap.py)
 
 ### Problem (ddp_bucketed_benchmarking): 3 points
 (a)
+code file: [[python]](cs336_systems/ddp/ddp_bucket_benchmark.py), [[bash]](scripts/run_mem_profile_ddp.sh)
+## DDP Benchmark Results (1 node × 2 GPUs, XL model, compile disabled)
+
+| Setting                          | Step Time (s) | Δ vs Naive | Peak Mem (GiB) | Δ Mem |
+|----------------------------------|--------------:|-----------:|---------------:|------:|
+| **Naive (per-param sync)**       | 0.6027        | —          | 16.80          | —     |
+| **Overlap (async per-param)**    | 0.5092        | -15.5%     | 16.80          | 0     |
+| **Bucket (1 MB)**                | 0.5108        | -15.3%     | 16.80          | 0     |
+| **Bucket (10 MB)**               | 0.5212        | -13.5%     | 16.80          | 0     |
+| **Bucket (100 MB)**              | 0.5180        | -14.1%     | 18.49          | +10%  |
+| **Bucket (1000 MB)**             | 0.5451        | -9.6%      | 18.47          | +10%  |
+
+---
+
+## Conclusion
+
+- Overlapping communication with backward computation reduces step time by **~15%** compared to naive per-parameter synchronization.
+- Small buckets (1 MB) achieve performance similar to per-parameter overlap, as communication can still start early.
+- Large buckets delay communication, reduce overlap, and slightly degrade performance.
+- Larger buckets increase memory usage due to flattened gradient buffers.
+
+Overall, the results align with theoretical expectations: overlap improves performance, while overly large buckets reduce effective communication-compute overlap.
+
+(b)
+
 
 
