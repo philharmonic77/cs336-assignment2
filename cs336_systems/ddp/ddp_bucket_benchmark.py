@@ -3,7 +3,6 @@ import os
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import argparse
-from typing import Optional
 from contextlib import contextmanager
 from pathlib import Path
 from cs336_systems.flash_attn.model_builder import build_model, ModelConfig
@@ -44,7 +43,7 @@ def run_bucket_ddp(
     nsteps,
     bucket_size_mb,
     seed=123,
-    profile_dir: Optional[str] = None,
+    profile_out: str = "",
 ):
     torch.manual_seed(seed) # for model param init
     setup(rank, world_size, backend)
@@ -54,37 +53,34 @@ def run_bucket_ddp(
         torch.cuda.set_device(rank)
         device = torch.device(f"cuda:{rank}")
 
-    model = build_model(cfg, use_flash=use_flash)
-    model.to(device)
-    model = DDP_BUCKETED(model, bucket_size_mb)
-
-    if device.type == "cuda":
-        model = torch.compile(model)
-
-    optimizer = AdamW(model.parameters(), lr=cfg.lr)
-
-    gen = torch.Generator(device=device)
-    gen.manual_seed(seed)
+    should_profile = (device.type == "cuda") and (rank == 0) and bool(profile_out)
 
     # ---- memory stats ----
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
 
-    # ---- warmup (no logging) ----
-    for _ in range(warmup):
-        x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
-        _ = train_step(model, optimizer, x, y)
+    with cuda_memory_profile(should_profile, profile_out):
+        model = build_model(cfg, use_flash=use_flash)
+        model.to(device)
+        model = DDP_BUCKETED(model, bucket_size_mb)
 
-    # ---- measure ----
-    total_time_acc = 0.0
-    last_loss = None
+        if device.type == "cuda":
+            model = torch.compile(model)
 
-    profile_enabled = (profile_dir is not None) and (device.type == "cuda") and (rank == 0)
-    profile_out = ""
-    if profile_enabled and profile_dir is not None:
-        profile_out = os.path.join(profile_dir, f"rank{rank}_memory_snapshot.pickle")
+        optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
-    with cuda_memory_profile(profile_enabled, profile_out):
+        gen = torch.Generator(device=device)
+        gen.manual_seed(seed)
+
+        # ---- warmup (no logging) ----
+        for _ in range(warmup):
+            x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
+            _ = train_step(model, optimizer, x, y)
+
+        # ---- measure ----
+        total_time_acc = 0.0
+        last_loss = None
+
         for _ in range(nsteps):
             x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
             total_time, loss = train_step(model, optimizer, x, y)
@@ -176,7 +172,7 @@ def train_step(model, optimizer, x, y):
 
        
 
-def main(bucket_size, profile_dir: Optional[str] = None):
+def main(bucket_size, profile_out: str = ""):
 
     world_size = 2
     if torch.cuda.is_available():
@@ -191,7 +187,7 @@ def main(bucket_size, profile_dir: Optional[str] = None):
 
     mp.spawn(
         fn=run_bucket_ddp,
-        args=(world_size, backend, cfg, True, warmup, nsteps, bucket_size, seed, profile_dir),
+        args=(world_size, backend, cfg, True, warmup, nsteps, bucket_size, seed, profile_out),
         nprocs=world_size,
         join=True,
     )
@@ -207,22 +203,11 @@ if __name__ == "__main__":
         help="Bucket size in MB.",
     )
     parser.add_argument(
-        "--profile",
-        action="store_true",
-        help="Enable CUDA memory snapshot profiling.",
-    )
-    parser.add_argument(
-        "--profile-dir",
+        "--profile-out",
         type=str,
-        default=None,
-        help="Directory to write CUDA memory snapshots. Defaults to results/torch_profiler/ddp_bucket_bsX.",
+        default="",
+        help="Output snapshot path. If empty, profiling is disabled.",
     )
     args = parser.parse_args()
 
-    profile_dir = None
-    if args.profile:
-        if args.profile_dir is not None:
-            profile_dir = args.profile_dir
-        else:
-            profile_dir = os.path.join("results", "torch_profiler", f"ddp_bucket_bs{args.bucket_size_mb}")
-    main(args.bucket_size_mb, profile_dir=profile_dir)
+    main(args.bucket_size_mb, profile_out=args.profile_out)
