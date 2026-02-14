@@ -2,6 +2,10 @@ import torch
 import os
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import argparse
+from typing import Optional
+from contextlib import contextmanager
+from pathlib import Path
 from cs336_systems.flash_attn.model_builder import build_model, ModelConfig
 from cs336_basics.losses import cross_entropy
 from cs336_basics.optim import AdamW
@@ -11,8 +15,37 @@ from cs336_systems.ddp.overlap import DDP_BUCKETED
 # close mixed precision、use torch.compile
 
 
+@contextmanager
+def cuda_memory_profile(enabled: bool, out_path: str):
+    if not enabled:
+        yield
+        return
 
-def run_bucket_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, bucket_size_mb, seed=123):
+    torch.cuda.memory._record_memory_history(
+        max_entries=1_000_000,
+        stacks="all",
+        context="all",
+    )
+    try:
+        yield
+    finally:
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        torch.cuda.memory._dump_snapshot(out_path)
+        torch.cuda.memory._record_memory_history(enabled=None)
+
+
+def run_bucket_ddp(
+    rank,
+    world_size,
+    backend,
+    cfg,
+    use_flash,
+    warmup,
+    nsteps,
+    bucket_size_mb,
+    seed=123,
+    profile_dir: Optional[str] = None,
+):
     torch.manual_seed(seed) # for model param init
     setup(rank, world_size, backend)
 
@@ -39,7 +72,6 @@ def run_bucket_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, bu
 
     # ---- warmup (no logging) ----
     for _ in range(warmup):
-
         x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
         _ = train_step(model, optimizer, x, y)
 
@@ -47,13 +79,17 @@ def run_bucket_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, bu
     total_time_acc = 0.0
     last_loss = None
 
-    for _ in range(nsteps):
-        x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
-        total_time, loss = train_step(
-            model, optimizer, x, y
-        )
-        total_time_acc += total_time
-        last_loss = loss
+    profile_enabled = (profile_dir is not None) and (device.type == "cuda") and (rank == 0)
+    profile_out = ""
+    if profile_enabled and profile_dir is not None:
+        profile_out = os.path.join(profile_dir, f"rank{rank}_memory_snapshot.pickle")
+
+    with cuda_memory_profile(profile_enabled, profile_out):
+        for _ in range(nsteps):
+            x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
+            total_time, loss = train_step(model, optimizer, x, y)
+            total_time_acc += total_time
+            last_loss = loss
 
     total_tensor = torch.tensor(total_time_acc / nsteps, device=device)
     loss_tensor = torch.tensor(last_loss, device=device)
@@ -70,7 +106,7 @@ def run_bucket_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, bu
 
     dist.barrier()
     if rank == 0:
-        torch.save(model.state_dict(), "ddp.pt")
+        # torch.save(model.state_dict(), "ddp.pt")
 
         print(f"Avg step time: {total_tensor.item():.4f}s")
         print(f"Last loss: {loss_tensor.item():.6f}")
@@ -140,7 +176,7 @@ def train_step(model, optimizer, x, y):
 
        
 
-def main(bucket_size):
+def main(bucket_size, profile_dir: Optional[str] = None):
 
     world_size = 2
     if torch.cuda.is_available():
@@ -155,7 +191,7 @@ def main(bucket_size):
 
     mp.spawn(
         fn=run_bucket_ddp,
-        args=(world_size, backend, cfg, True, warmup, nsteps, bucket_size, seed),
+        args=(world_size, backend, cfg, True, warmup, nsteps, bucket_size, seed, profile_dir),
         nprocs=world_size,
         join=True,
     )
@@ -163,5 +199,30 @@ def main(bucket_size):
 
 
 if __name__ == "__main__":
-    for bucket_size in [1, 10, 100, 1000]:
-        main(bucket_size)
+    parser = argparse.ArgumentParser(description="DDP bucketed benchmark")
+    parser.add_argument(
+        "--bucket-size-mb",
+        type=int,
+        required=True,
+        help="Bucket size in MB.",
+    )
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Enable CUDA memory snapshot profiling.",
+    )
+    parser.add_argument(
+        "--profile-dir",
+        type=str,
+        default=None,
+        help="Directory to write CUDA memory snapshots. Defaults to results/torch_profiler/ddp_bucket_bsX.",
+    )
+    args = parser.parse_args()
+
+    profile_dir = None
+    if args.profile:
+        if args.profile_dir is not None:
+            profile_dir = args.profile_dir
+        else:
+            profile_dir = os.path.join("results", "torch_profiler", f"ddp_bucket_bs{args.bucket_size_mb}")
+    main(args.bucket_size_mb, profile_dir=profile_dir)
