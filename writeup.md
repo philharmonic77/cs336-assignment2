@@ -607,16 +607,49 @@ code file: [[python]](cs336_systems/ddp/ddp_bucket_benchmark.py), [[bash]](scrip
 
 ---
 
-## Conclusion
+| bucket size = 1M | bucket size = 10M |
+|-------------|---------------|
+| ![](assets/bucket_ddp_1m.jpg) | ![](assets/bucket_ddp_10m.jpg) |
 
-- Overlapping communication with backward computation reduces step time by **~15%** compared to naive per-parameter synchronization.
-- Small buckets (1 MB) achieve performance similar to per-parameter overlap, as communication can still start early.
-- Large buckets delay communication, reduce overlap, and slightly degrade performance.
-- Larger buckets increase memory usage due to flattened gradient buffers.
+| bucket size = 100M | bucket size = 1000M |
+|------------------------|-------------|
+| ![](assets/bucket_ddp_100m.jpg) | ![](assets/bucket_ddp_1000m.jpg) |
 
-Overall, the results align with theoretical expectations: overlap improves performance, while overly large buckets reduce effective communication-compute overlap.
+#### Conclusion
 
-(b)
+For bucketing, I expected small buckets to behave close to per-parameter overlap (communication starts early), while large buckets would delay the all-reduce and reduce overlap; the results match that trend (1MB ≈ per-param overlap, 1000MB is slower). The bucket sizes don’t change step time dramatically because in this setup the dominant cost is NCCL transfer time over PCIe, not “too many small collectives,” so reducing launch count has limited upside. Larger buckets also increase peak memory because they allocate and hold flattened gradient buffers for bucket all-reduce, which becomes visible at 100MB/1000MB.
+
+**On H100 systems, once communication becomes significantly faster, kernel launch and scheduling overhead are more likely to become the relative bottlenecks. In contrast, on a 4090 PCIe setup, the primary bottleneck is the communication itself rather than launch overhead.**
+
+(b) Let:
+- $s$ = total size of model parameters (bytes)
+- $w$ = effective all-reduce bandwidth (bytes per second)
+- $o$ = overhead (seconds) per communication call
+- $n_b$ = number of buckets
+- $b = \frac{s}{n_b}$ = bucket size
+
+Communication time per bucket is:
+$$
+t_{\text{comm}}(b) = \frac{b}{w} + o
+$$
+Backward compute time per bucket is:
+$$
+t_{\text{comp}}(b) = \frac{b}{w}
+$$
+Since compute time equals the bandwidth component of communication time, the $\frac{b}{w}$ portion can be overlapped for all buckets except the final one. The per-call overhead $o$ cannot be overlapped. Thus, the total communication overhead (additional time after backward finishes) is:
+$$
+T_{\text{over}}(n_b) = n_b o + \frac{s}{n_b w}
+$$
+To minimize this with respect to $n_b$:
+$$
+n_b^\star = \sqrt{\frac{s}{o w}}
+$$
+Optimal bucket size:
+$$
+b^\star = \sqrt{s,o,w}
+$$
+
+With fixed model size, the optimal bucket size depends on the relative scale of bandwidth and launch overhead: on high-bandwidth systems (e.g., H100), larger buckets better amortize launch overhead, whereas on lower-bandwidth PCIe systems (e.g., RTX 4090), communication time dominates and smaller buckets help preserve overlap.
 
 
 
