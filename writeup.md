@@ -622,31 +622,30 @@ For bucketing, I expected small buckets to behave close to per-parameter overlap
 **On H100 systems, once communication becomes significantly faster, kernel launch and scheduling overhead are more likely to become the relative bottlenecks. In contrast, on a 4090 PCIe setup, the primary bottleneck is the communication itself rather than launch overhead.**
 
 (b) Let:
-- $s$ = total size of model parameters (bytes)
-- $w$ = effective all-reduce bandwidth (bytes per second)
-- $o$ = overhead (seconds) per communication call
-- $n_b$ = number of buckets
-- $b = \frac{s}{n_b}$ = bucket size
+- $s$ = total size of model parameters (bytes)  
+- $w$ = effective all-reduce bandwidth (bytes/s)  
+- $o$ = overhead per communication call (s)  
+- $n_b$ = number of buckets  
+- $b=\frac{s}{n_b}$ = bucket size  
 
-Communication time per bucket is:
+Per-bucket communication time:
 $$
-t_{\text{comm}}(b) = \frac{b}{w} + o
+t_{\text{comm}}(b)=\frac{b}{w}+o
 $$
-Backward compute time per bucket is:
+
+Under the simplifying assumption that per-bucket backward compute time matches the bandwidth term,
 $$
-t_{\text{comp}}(b) = \frac{b}{w}
+t_{\text{comp}}(b)=\frac{b}{w},
 $$
-Since compute time equals the bandwidth component of communication time, the $\frac{b}{w}$ portion can be overlapped for all buckets except the final one. The per-call overhead $o$ cannot be overlapped. Thus, the total communication overhead (additional time after backward finishes) is:
+a common overlap model gives the post-backward overhead:
 $$
-T_{\text{over}}(n_b) = n_b o + \frac{s}{n_b w}
+T_{\text{over}}(n_b)\approx n_b\,o+\frac{s}{n_b\,w}.
 $$
-To minimize this with respect to $n_b$:
+
+Minimizing w.r.t. $n_b$:
 $$
-n_b^\star = \sqrt{\frac{s}{o w}}
-$$
-Optimal bucket size:
-$$
-b^\star = \sqrt{s,o,w}
+n_b^{\ast}=\sqrt{\frac{s}{w\,o}},\qquad
+b^{\ast}=\frac{s}{n_b^{\ast}}=\sqrt{s\,w\,o}.
 $$
 
 With fixed model size, the optimal bucket size depends on the relative scale of bandwidth and launch overhead: on high-bandwidth systems (e.g., H100), larger buckets better amortize launch overhead, whereas on lower-bandwidth PCIe systems (e.g., RTX 4090), communication time dominates and smaller buckets help preserve overlap.
