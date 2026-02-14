@@ -10,7 +10,7 @@ from torch._utils import (
     _flatten_dense_tensors,
     _unflatten_dense_tensors,
 )
-# close mixed precision、use torch.compile
+# close mixed precision、torch.compile
 
 
 
@@ -25,8 +25,8 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
 
     model = build_model(cfg, use_flash=use_flash).to(device)
     init_model_and_broadcast(model, rank, src=0)
-    if device.type == "cuda":
-        model = torch.compile(model)
+    # if device.type == "cuda":
+    #     model = torch.compile(model)
 
     optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
@@ -90,7 +90,7 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
 
     dist.barrier()
     if rank == 0:
-        torch.save(model.state_dict(), "ddp.pt")
+        # torch.save(model.state_dict(), "ddp.pt")
 
         print(f"Avg step time: {total_tensor.item():.4f}s")
         print(f"Avg comm time: {comm_tensor.item():.4f}s")

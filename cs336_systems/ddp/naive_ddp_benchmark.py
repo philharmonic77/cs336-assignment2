@@ -7,7 +7,7 @@ from cs336_basics.losses import cross_entropy
 from cs336_basics.optim import AdamW
 from timeit import default_timer as timer
 import torch.cuda.nvtx as nvtx
-# close mixed precision、use torch.compile
+# close mixed precision、torch.compile
 
 
 
@@ -22,8 +22,8 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
 
     model = build_model(cfg, use_flash=use_flash).to(device)
     init_model_and_broadcast(model, rank, src=0)
-    if device.type == "cuda":
-        model = torch.compile(model)
+    # if device.type == "cuda":
+    #     model = torch.compile(model)
 
     optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
@@ -45,14 +45,15 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
     comm_time_acc = 0.0
     last_loss = None
 
-    for _ in range(nsteps):
-        x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
-        total_time, comm_time, loss = train_step(
-            model, optimizer, x, y, device, world_size
-        )
-        total_time_acc += total_time
-        comm_time_acc += comm_time
-        last_loss = loss
+    with nvtx.range("measure"):
+        for _ in range(nsteps):
+            x, y = generate_and_scatter_data(rank, world_size, cfg, device, gen)
+            total_time, comm_time, loss = train_step(
+                model, optimizer, x, y, device, world_size
+            )
+            total_time_acc += total_time
+            comm_time_acc += comm_time
+            last_loss = loss
 
     # Worst-case (slowest rank) step/comm time is what determines wall-clock iteration time.
     total_tensor = torch.tensor(total_time_acc / nsteps, device=device)
@@ -72,7 +73,7 @@ def run_naive_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, see
 
     dist.barrier()
     if rank == 0:
-        torch.save(model.state_dict(), "ddp.pt")
+        # torch.save(model.state_dict(), "ddp.pt")
 
         print(f"Avg step time: {total_tensor.item():.4f}s")
         print(f"Avg comm time: {comm_tensor.item():.4f}s")
@@ -93,8 +94,8 @@ def run_single(backend, cfg, use_flash, warmup, nsteps, seed=123):
         device = torch.device(f"cuda:{0}")
 
     model = build_model(cfg, use_flash=use_flash).to(device)
-    if device.type == "cuda":
-        model = torch.compile(model)
+    # if device.type == "cuda":
+    #     model = torch.compile(model)
 
     optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
@@ -114,13 +115,12 @@ def run_single(backend, cfg, use_flash, warmup, nsteps, seed=123):
     total_time_acc = 0.0
     last_loss = None
 
-    with nvtx.range("measure"):
-        for _ in range(nsteps):
-            x, y = generate_data_batch(cfg, device, gen)
-            total_time, _, loss = train_step(model, optimizer, x, y, device)
+    for _ in range(nsteps):
+        x, y = generate_data_batch(cfg, device, gen)
+        total_time, _, loss = train_step(model, optimizer, x, y, device)
 
-            total_time_acc += total_time
-            last_loss = loss
+        total_time_acc += total_time
+        last_loss = loss
 
     print(f"Avg step time: {total_time_acc / nsteps:.4f}s")
     print(f"Last loss: {last_loss:.6f}")

@@ -11,7 +11,7 @@ from cs336_basics.optim import AdamW
 from timeit import default_timer as timer
 from cs336_systems.ddp.overlap import DDP_BUCKETED
 
-# close mixed precision、use torch.compile
+# close mixed precision、torch.compile
 
 
 @contextmanager
@@ -64,8 +64,8 @@ def run_bucket_ddp(
         model.to(device)
         model = DDP_BUCKETED(model, bucket_size_mb)
 
-        if device.type == "cuda":
-            model = torch.compile(model)
+        # if device.type == "cuda":
+        #     model = torch.compile(model)
 
         optimizer = AdamW(model.parameters(), lr=cfg.lr)
 

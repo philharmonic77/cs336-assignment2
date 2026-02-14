@@ -9,7 +9,7 @@ from timeit import default_timer as timer
 from cs336_systems.ddp.overlap import DDP
 import torch.cuda.nvtx as nvtx
 
-# close mixed precision、use torch.compile
+# close mixed precision、torch.compile
 
 
 
@@ -26,8 +26,8 @@ def run_overlap_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, s
     model.to(device)
     model = DDP(model)
 
-    if device.type == "cuda":
-        model = torch.compile(model)
+    # if device.type == "cuda":
+    #     model = torch.compile(model)
 
     optimizer = AdamW(model.parameters(), lr=cfg.lr)
 
@@ -72,7 +72,7 @@ def run_overlap_ddp(rank, world_size, backend, cfg, use_flash, warmup, nsteps, s
 
     dist.barrier()
     if rank == 0:
-        torch.save(model.state_dict(), "ddp.pt")
+        # torch.save(model.state_dict(), "ddp.pt")
 
         print(f"Avg step time: {total_tensor.item():.4f}s")
         print(f"Last loss: {loss_tensor.item():.6f}")
