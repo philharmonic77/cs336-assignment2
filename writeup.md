@@ -622,31 +622,31 @@ For bucketing, I expected small buckets to behave close to per-parameter overlap
 **On H100 systems, once communication becomes significantly faster, kernel launch and scheduling overhead are more likely to become the relative bottlenecks. In contrast, on a 4090 PCIe setup, the primary bottleneck is the communication itself rather than launch overhead.**
 
 (b) Let:
-- $s$ = total size of model parameters (bytes)  
-- $w$ = effective all-reduce bandwidth (bytes/s)  
-- $o$ = overhead per communication call (s)  
-- $n_b$ = number of buckets  
-- $b=\frac{s}{n_b}$ = bucket size  
+	•	s = total model size (bytes)
+	•	w = effective all-reduce bandwidth (bytes/sec)
+	•	o = per-call communication overhead (sec)
+	•	n_b = number of buckets
+	•	b = s / n_b = bucket size
 
 Per-bucket communication time:
-$$
-t_{\text{comm}}(b)=\frac{b}{w}+o
-$$
 
-Under the simplifying assumption that per-bucket backward compute time matches the bandwidth term,
-$$
-t_{\text{comp}}(b)=\frac{b}{w},
-$$
-a common overlap model gives the post-backward overhead:
-$$
-T_{\text{over}}(n_b)\approx n_b\,o+\frac{s}{n_b\,w}.
-$$
+t_comm(b) = b / w + o
 
-Minimizing w.r.t. $n_b$:
-$$
-n_b^{\ast}=\sqrt{\frac{s}{w\,o}},\qquad
-b^{\ast}=\frac{s}{n_b^{\ast}}=\sqrt{s\,w\,o}.
-$$
+Per-bucket compute time:
+
+t_comp(b) = b / w
+
+Since the bandwidth component (b / w) can overlap with backward computation (except the final bucket), the remaining non-overlapped time is:
+
+T_over(n_b) = n_b · o + s / (n_b · w)
+
+Minimizing with respect to n_b gives:
+
+n_b* = sqrt( s / (w · o) )
+
+Optimal bucket size:
+
+b* = sqrt( s · w · o )
 
 With fixed model size, the optimal bucket size depends on the relative scale of bandwidth and launch overhead: on high-bandwidth systems (e.g., H100), larger buckets better amortize launch overhead, whereas on lower-bandwidth PCIe systems (e.g., RTX 4090), communication time dominates and smaller buckets help preserve overlap.
 
