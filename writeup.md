@@ -1,3 +1,5 @@
+# 1 Assignment Overview
+## 1.1 Profiling and Benchmarking
 ### Problem (benchmarking_script): 4 points
 
 (a) Here are my scripts used for both benchmark calculating and nsys profiling:   
@@ -290,6 +292,8 @@ For the large model with D=1280, this is $1280^2 \times 4 \approx 6.25 MiB$, cor
 
 Here is the script used: [[bash]](scripts/run_mem_profile.sh)
 
+## 1.2 Optimizing Attention with FlashAttention-2
+
 ### Problem (pytorch_attention): 2 points
 
 - when context_len = 16384, I got OOM error.
@@ -343,6 +347,7 @@ Here are the time and memory results:
 
 Here is the script used: [[bash]](scripts/run_attn_benchmark.sh), here is the script used to write table: [[python]](utils/make_tables_for_attn_benchmark.py).
 
+## 1.3 Benchmarking JIT-Compiled Attention
 ### Problem (torch_compile): 2 points
 (a)
 - d_model = 16
@@ -450,11 +455,15 @@ Here is the script used: [[bash]](scripts/run_attn_benchmark_compile.sh), here i
 
 Here is the script used to calculate: [[bash]](scripts/run_nsys_profile_compile.sh), here is the script used to write table: [[python]](utils/make_tables_for_model_benchmark.py).
 
+
 ### Problem (flash_forward): 15 points / Problem (flash_backward): 5 points
 Code files are put at this [folder](cs336_systems/flash_attn/).
 
 ### Problem (flash_benchmarking): 5 points
 I did not complete the full set of experiments, but I have included some partial results [here](#single-gpu-benchmark-medium-model-ctx768-bs4).
+
+# 2 Distributed Data Parallel Training
+## 2.1 Single-Node Distributed Communication in PyTorch
 
 ### Problem (distributed_communication_single_node): 5 points
 code file: [[python]](cs336_systems/ddp/all_reduce_benchmark.py)
@@ -501,6 +510,7 @@ For small tensor sizes (e.g., 1MB), runtime is dominated by communication latenc
 ### Problem (naive_ddp): 5 points
 code file: [[python]](cs336_systems/ddp/naive_ddp.py)
 
+## 2.2 A Naïve Implementation of Distributed Data Parallel Training
 ### Problem (naive_ddp_benchmarking): 3 points
 code file: [[python]](cs336_systems/ddp/naive_ddp_benchmark.py)
 #### Experimental Setup
@@ -543,7 +553,7 @@ The assignment did not require this experiment, but I conducted it additionally 
 | Flash      | ✅       | 0.2759        | **+9% faster**  | 11.22          | **−8.04 GiB**     |
 | No Flash   | ✅       | 0.3034        | —             | 19.26          | —                 |
 
-
+## 2.3 Improving Upon the Minimal DDP Implementation
 ### Problem (minimal_ddp_flat_benchmarking): 2 points
 code file: [[python]](cs336_systems/ddp/ddp_flatten_benchmark.py)
 
@@ -650,5 +660,8 @@ b* = sqrt( s · w · o )
 
 With fixed model size, the optimal bucket size depends on the relative scale of bandwidth and launch overhead: on high-bandwidth systems (e.g., H100), larger buckets better amortize launch overhead, whereas on lower-bandwidth PCIe systems (e.g., RTX 4090), communication time dominates and smaller buckets help preserve overlap.
 
+## 2.4 4D Parallelism
+
+# 3 Optimizer State Sharding
 
 
