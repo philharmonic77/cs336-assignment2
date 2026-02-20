@@ -681,15 +681,135 @@ $$
 \approx 3.20 \text{ TiB}
 $$
 
-
-
 Using the FP32 total above:
 
 $$
 \text{H100} = \frac{3{,}517{,}578{,}215{,}424}{80\times 10^9} \approx 43.97 \approx 44
 $$
 
-(b)
+---
+
+(b) Assume $B(global tokens)=2M$，
+$$
+M_{\text{per-device}}
+= \frac{32 D F L}{N} \;+\; B* L (D+F)\left(1+\frac{1}{N}\right)
+
+= \frac{3.52 \text{ TB}}{N}
++
+\frac{17.55 \text{ TB}}{N}
+\left(1+\frac{1}{N}\right)
+$$
+
+At $N_{\text{FSDP}} = 208$, the per-device memory usage is approximately $94.70 \text{ GiB per device}$, which is just below the 95 GiB limit.
+
+---
+
+(c) Given (TPU v5p):
+
+- $ W_{\text{ici}} = 2 \cdot 9 \cdot 10^{10} = 1.8 \times 10^{11} $
+- $ C = 4.6 \times 10^{14} $
+- Mesh axes: $ M_X = 2,\; M_Y = 1 $
+- Parallelism: $ X = 16 $ (FSDP), $ Y = 4 $ (TP)  
+- Total chips: $ N = XY = 64 $
+
+
+Forward-pass time models (Scaling Book)
+
+$$
+T_{\text{FSDP}} = \frac{4 D F}{Y \, W_{\text{ici}} \, M_X}
+$$
+
+$$
+T_{\text{TP}} = \frac{4 B D}{X \, W_{\text{ici}} \, M_Y}
+$$
+
+$$
+T_{\text{math}} = \frac{4 B D F}{N \, C}
+$$
+
+Compute-bound condition (with overlap):
+
+$$
+\max(T_{\text{FSDP}}, T_{\text{TP}}) \le T_{\text{math}}
+$$
+
+
+ (1) Ensure TP communication can be hidden
+
+$$
+T_{\text{TP}} \le T_{\text{math}}
+$$
+
+
+
+$$
+F \ge \frac{N C}{X W_{\text{ici}} M_Y}
+$$
+
+Plug in numbers:
+
+$$
+\frac{64 \cdot 4.6 \times 10^{14}}
+{16 \cdot 1.8 \times 10^{11} \cdot 1}
+\approx 1.0222 \times 10^{4}
+$$
+
+Given $$ F = 53248 $$, this condition holds.
+
+
+(2) Compute batch threshold from FSDP comm
+
+$$
+T_{\text{FSDP}} \le T_{\text{math}}
+$$
+
+Plug in values:
+
+$$
+B_{\min}
+=
+\frac{64 \cdot 4.6 \times 10^{14}}
+{4 \cdot 1.8 \times 10^{11} \cdot 2}
+\approx 2.0444 \times 10^{4}
+\text{ tokens}
+$$
+
+
+Per-device batch size
+
+$$
+\frac{B_{\min}}{N}
+=
+\frac{20444.44}{64}
+\approx 319.44
+$$
+
+The model becomes compute-bound at **≈320 tokens per device**, corresponding to an overall batch of **≈20.5k tokens** (e.g., \(B = 20480\) total tokens across \(N = 64\) chips).
+
+---
+
+(d) To reduce the minimum batch size required to stay compute-bound while retaining high throughput, we must reduce or better hide communication so that
+
+$$T_{\text{math}} \;\ge\; T_{\text{comms}}.$$
+
+From the Scaling Book forward model,
+$$
+T_{\text{math}} = \frac{4 B D F}{N C},
+\qquad
+T_{\text{comms}} \propto \frac{\text{message size}}{W_{\text{ici}} \, M},
+$$
+so the compute-bound threshold scales as
+$$
+B_{\min} \;\propto\; \frac{N C}{W_{\text{ici}} M}.
+$$
+Thus, to lower $B_{\min}$ without reducing throughput, we must either increase effective bandwidth or decrease communicated bytes.
+
+- First, communication compression (e.g., 8-bit or lower-precision gradient synchronization).
+- Second, parameter and optimizer sharding (ZeRO/FSDP).
+- Third, pipeline parallelism with microbatching increases utilization without increasing global batch size.  
+  
+    
+
 
 # 3 Optimizer State Sharding
 
