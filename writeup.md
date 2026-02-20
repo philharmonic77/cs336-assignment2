@@ -661,6 +661,35 @@ b* = sqrt( s · w · o )
 With fixed model size, the optimal bucket size depends on the relative scale of bandwidth and launch overhead: on high-bandwidth systems (e.g., H100), larger buckets better amortize launch overhead, whereas on lower-bandwidth PCIe systems (e.g., RTX 4090), communication time dominates and smaller buckets help preserve overlap.
 
 ## 2.4 4D Parallelism
+[Part 5 of the TPU Scaling Book](https://jax-ml.github.io/scaling-book/training/)
+
+[The Ultra-Scale Playbook: Training LLMs on GPU Clusters](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=high-level_overview)
+
+(a) Total parameters:
+
+$$
+P = 126 \cdot 2 \cdot 16384 \cdot 53248
+= 2.198 \times 10^{11}
+$$
+
+Each parameter requires 16 bytes (FP32 master weights + FP32 gradients + FP32 Adam states), so:
+
+$$
+\text{Memory} = P \cdot 16
+= 3.52 \times 10^{12} \text{ bytes}
+= 3276 \text{ GiB}
+\approx 3.20 \text{ TiB}
+$$
+
+
+
+Using the FP32 total above:
+
+$$
+\text{H100} = \frac{3{,}517{,}578{,}215{,}424}{80\times 10^9} \approx 43.97 \approx 44
+$$
+
+(b)
 
 # 3 Optimizer State Sharding
 
